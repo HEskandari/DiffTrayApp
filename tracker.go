@@ -11,17 +11,24 @@ import (
 	"strings"
 )
 
-type payloadReceiver struct {
-}
+var TrackerPort = 4523
+
+type MoveMessageHandler func(cmd *MovePayload)
+type DeleteMessageHandler func(cmd *DeletePayload)
 
 type tracker struct {
-	receiver  *payloadReceiver
-	processor chan string
+	processor     chan string
+	moveHandler   MoveMessageHandler
+	deleteHandler DeleteMessageHandler
 }
 
 func (t *tracker) Start() {
 	go t.startReceiver()
 	go t.startProcessor(t.processor)
+}
+
+func (t *tracker) Stop() {
+	close(t.processor)
 }
 
 func (t *tracker) startProcessor(input <-chan string) {
@@ -31,11 +38,11 @@ func (t *tracker) startProcessor(input <-chan string) {
 		if strings.Contains(message, "\"Type\":\"Move\"") {
 			moveCommand := MovePayload{}
 			deserialize(message, &moveCommand)
-			moveFile(moveCommand)
+			t.moveFile(&moveCommand)
 		} else if strings.Contains(message, "\"Type\":\"Delete\"") {
 			deleteCommand := DeletePayload{}
 			deserialize(message, &deleteCommand)
-			deleteFile(deleteCommand)
+			t.deleteFile(&deleteCommand)
 		} else {
 			log.Printf("Unknown payload: %s", message)
 		}
@@ -49,8 +56,6 @@ func newTracker() tracker {
 	return tracker
 }
 
-var TrackerPort = 4523
-
 func (t *tracker) startReceiver() {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(TrackerPort))
 	check(err, "Server is ready.")
@@ -63,6 +68,7 @@ func (t *tracker) startReceiver() {
 			bytes, err := ioutil.ReadAll(reader)
 			if err != nil {
 				log.Printf("Failed to read: %s", err)
+				return
 			}
 			message := string(bytes)
 
@@ -78,12 +84,14 @@ func check(err error, message string) {
 	fmt.Printf("%s\n", message)
 }
 
-func deleteFile(command DeletePayload) {
+func (t *tracker) deleteFile(command *DeletePayload) {
 	log.Printf("Delete: %+v", command)
+	t.deleteHandler(command)
 }
 
-func moveFile(command MovePayload) {
+func (t *tracker) moveFile(command *MovePayload) {
 	log.Printf("Move: %+v", command)
+	t.moveHandler(command)
 }
 
 func deserialize(payload string, obj interface{}) {

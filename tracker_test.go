@@ -1,30 +1,13 @@
 package main
 
 import (
-	"net"
-	"strconv"
+	"github.com/VerifyTests/Verify.Go/verifier"
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
 )
 
-func TestSendingData_Integration(t *testing.T) {
-	tracker := newTracker()
-	tracker.Start()
-
-	time.Sleep(2 * time.Second)
-
-	sendMessage(t, "Test message")
-
-	moveMsg := `{
-"Type":"Move",
-"CanKill":true,
-"Exe":"theExe",
-"Arguments":"TheArguments \"s\"",
-"ProcessId":10
-}`
-	sendMessage(t, moveMsg)
-
-	deleteMsg := `
+var deleteMsg = `
 {
 "Type":"Move",
 "Temp":"theTempFilePath",
@@ -34,38 +17,50 @@ func TestSendingData_Integration(t *testing.T) {
 "Arguments":"TheArguments",
 "ProcessId":1000
 }`
-	sendMessage(t, deleteMsg)
 
-	time.Sleep(30 * time.Second)
+var moveMsg = `{
+"Type":"Move",
+"CanKill":true,
+"Exe":"theExe",
+"Arguments":"TheArguments \"s\"",
+"ProcessId":10
+}`
+
+var testSettings verifier.VerifySettings
+
+func init() {
+	testSettings = verifier.NewSettings()
+	testSettings.UseDirectory("./_testdata")
 }
 
-func sendMessage(t *testing.T, msg string) {
-	conn, err := net.Dial("tcp", ":"+strconv.Itoa(TrackerPort))
-	if err != nil {
-		t.Fatalf("Failed to open connection: %s", err)
+func TestTracker_ReceivingMove(t *testing.T) {
+
+	var receivedDelete *DeletePayload
+	var receivedMove *MovePayload
+	var tracker = newTracker()
+
+	tracker.deleteHandler = func(cmd *DeletePayload) {
+		receivedDelete = cmd
+	}
+	tracker.moveHandler = func(cmd *MovePayload) {
+		receivedMove = cmd
 	}
 
-	_, err = conn.Write([]byte(msg))
-	if err != nil {
-		t.Fatalf("Failed to write the message payload: %s", err)
-	}
-	_ = conn.Close()
-}
+	receiveChan := make(chan string)
 
-func TestDeleteRequests(t *testing.T) {
+	go func() {
+		receiveChan <- moveMsg
+	}()
 
-	//tracker := payloadReceiver{}
-	//tracker.Start()
+	go func() {
+		tracker.startProcessor(receiveChan)
+	}()
 
-	conn, err := net.Dial("tcp", ":"+strconv.Itoa(TrackerPort))
-	if err != nil {
-		t.Fatalf("Failed to open connection: %s", err)
+	shouldReceive := func() bool {
+		return receivedMove != nil && receivedDelete == nil
 	}
 
-	defer conn.Close()
-	message := "this is a test"
-	_, err = conn.Write([]byte(message))
-	if err != nil {
-		t.Fatalf("Failed to write the message payload: %s", err)
-	}
+	assert.Eventually(t, shouldReceive, 12*time.Second, 3*time.Second)
+
+	verifier.VerifyWithSetting(t, testSettings, receivedMove)
 }
