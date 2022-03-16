@@ -1,115 +1,91 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
+	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
-	"net"
-	"strconv"
-	"strings"
+	"sync"
+	"time"
 )
 
-var TrackerPort = 4523
+type Active func()
+type Inactive func()
 
-type MoveMessageHandler func(cmd *MovePayload)
-type DeleteMessageHandler func(cmd *DeletePayload)
-
-type tracker struct {
-	processor     chan string
-	moveHandler   MoveMessageHandler
-	deleteHandler DeleteMessageHandler
-}
-
-func (t *tracker) Start() {
-	go t.startReceiver()
-	go t.startProcessor(t.processor)
-}
-
-func (t *tracker) Stop() {
-	close(t.processor)
-}
-
-func (t *tracker) startProcessor(input <-chan string) {
-	for {
-		message := <-input
-
-		if strings.Contains(message, "\"Type\":\"Move\"") {
-			moveCommand := MovePayload{}
-			deserialize(message, &moveCommand)
-			t.moveFile(&moveCommand)
-		} else if strings.Contains(message, "\"Type\":\"Delete\"") {
-			deleteCommand := DeletePayload{}
-			deserialize(message, &deleteCommand)
-			t.deleteFile(&deleteCommand)
-		} else {
-			log.Printf("Unknown payload: %s", message)
-		}
-	}
-}
-
-func newTracker() tracker {
-	tracker := tracker{
-		processor: make(chan string, 1),
-	}
-	return tracker
-}
-
-func (t *tracker) startReceiver() {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(TrackerPort))
-	check(err, "Server is ready.")
-
-	for {
-		conn, err := listener.Accept()
-		check(err, "Accepted connection.")
-
-		go func(reader io.Reader) {
-			bytes, err := ioutil.ReadAll(reader)
-			if err != nil {
-				log.Printf("Failed to read: %s", err)
-				return
-			}
-			message := string(bytes)
-
-			t.processor <- message
-		}(conn)
-	}
-}
-
-func check(err error, message string) {
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("%s\n", message)
-}
-
-func (t *tracker) deleteFile(command *DeletePayload) {
-	log.Printf("Delete: %+v", command)
-	t.deleteHandler(command)
-}
-
-func (t *tracker) moveFile(command *MovePayload) {
-	log.Printf("Move: %+v", command)
-	t.moveHandler(command)
-}
-
-func deserialize(payload string, obj interface{}) {
-	err := json.Unmarshal([]byte(payload), obj)
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
-type MovePayload struct {
+type trackedMove struct {
+	Extension string
+	Name      string
 	Temp      string
 	Target    string
 	Exe       string
 	Arguments string
 	CanKill   bool
-	ProcessId int
+	Process   int
+	Group     string
 }
 
-type DeletePayload struct {
-	File string
+type trackedDelete struct {
+	Name  string
+	File  string
+	Group string
+}
+
+type tracker struct {
+	active       Active
+	inactive     Inactive
+	filesDeleted map[string]trackedDelete
+	filesMoved   map[string]trackedMove
+	locker       *sync.Mutex
+}
+
+func newTracker(active Active, inactive Inactive) *tracker {
+	return &tracker{
+		active:   active,
+		inactive: inactive,
+		locker:   &sync.Mutex{},
+	}
+}
+
+func (t *tracker) Start() {
+	time.AfterFunc(5*time.Second, t.updateLoop)
+}
+
+func (t *tracker) updateLoop() {
+	fmt.Println("updated...")
+}
+
+func (t *tracker) moveFile(temp, target, exe, arguments string, canKill bool, processId int) {
+
+}
+
+func (t *tracker) addMove(temp, target, exe, arguments string, kill bool, processId int) {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
+	exeFile := utils.File.GetFileName(exe)
+	targetFile := utils.File.GetFileName(target)
+
+	if processId > 0 {
+		tryTerminateProcess(int32(processId))
+	}
+
+	t.filesMoved[target] = trackedMove{
+		Exe:    exeFile,
+		Target: targetFile,
+	}
+}
+
+func (t *tracker) addDelete(filePath string) {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
+	if _, ok := t.filesDeleted[filePath]; !ok {
+		log.Printf("DeleteAdded. File: %s", filePath)
+		t.filesDeleted[filePath] = trackedDelete{
+			File: filePath,
+			Name: utils.File.GetFileName(filePath),
+		}
+	} else {
+		log.Printf("DeleteUpdated. File: %s", filePath)
+
+	}
 }

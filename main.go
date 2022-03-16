@@ -20,6 +20,8 @@ func main() {
 
 	createMainMenu()
 	createTrayIcon()
+	startServer()
+	//startTracker()
 
 	mainWindow = a.NewWindow("Main")
 	mainWindow.Resize(fyne.NewSize(640, 460))
@@ -60,6 +62,28 @@ func main() {
 	//w.Resize(fyne.NewSize(640, 460))
 	//w.ShowAndRun()
 	a.Run()
+}
+
+func startServer() {
+	tracker := newTracker(showActiveIcon, showInactiveIcon)
+
+	server := newServer()
+	server.moveHandler = func(cmd *MovePayload) {
+		tracker.addMove(cmd.Temp, cmd.Target, cmd.Exe, cmd.Arguments, cmd.CanKill, cmd.ProcessId)
+	}
+	server.deleteHandler = func(cmd *DeletePayload) {
+		tracker.addDelete(cmd.File)
+	}
+
+	server.Start()
+}
+
+func showInactiveIcon() {
+	log.Println("Show inactive icon")
+}
+
+func showActiveIcon() {
+	log.Println("Show active icon")
 }
 
 func logLifecycle(a fyne.App) {
