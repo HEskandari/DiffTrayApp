@@ -30,7 +30,7 @@ func (p *processCleaner) refresh() {
 	p.commands = p.findAllProcess()
 }
 
-func tryTerminateProcess(pid int32) bool {
+func (p *processCleaner) TryTerminateProcess(pid int32) bool {
 	proc, err := process.NewProcess(pid)
 	if err == nil && proc != nil {
 		running, runErr := proc.IsRunning()

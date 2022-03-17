@@ -2,12 +2,16 @@ module DiffTrayApp
 
 go 1.17
 
-require fyne.io/fyne/v2 v2.1.2-rc2.0.20220312121234-8e381aaedc6e
+require (
+	fyne.io/fyne/v2 v2.1.2-rc2.0.20220312121234-8e381aaedc6e
+	github.com/VerifyTests/Verify.Go v1.0.0-alpha.2.0.20220316114932-44bb8c307d25
+	github.com/shirou/gopsutil/v3 v3.22.2
+	github.com/stretchr/testify v1.7.0
+)
 
 require (
 	fyne.io/systray v1.1.1-0.20220307102710-0121a6d9ce01 // indirect
 	github.com/Kodeworks/golang-image-ico v0.0.0-20141118225523-73f0f4cfade9 // indirect
-	github.com/VerifyTests/Verify.Go v1.0.0-alpha.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v0.0.0-20181227131451-3dcfdacbaaf3 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
@@ -25,10 +29,8 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/shirou/gopsutil/v3 v3.22.2 // indirect
 	github.com/srwiley/oksvg v0.0.0-20200311192757-870daf9aa564 // indirect
 	github.com/srwiley/rasterx v0.0.0-20200120212402-85cb7272f5e9 // indirect
-	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.9 // indirect
 	github.com/tklauser/numcpus v0.3.0 // indirect
 	github.com/yuin/goldmark v1.4.0 // indirect

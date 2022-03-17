@@ -16,7 +16,7 @@ type solutionFinder struct {
 	cache map[string]finderResult
 }
 
-func newSolutionFinder() *solutionFinder {
+func newProjectFinder() *solutionFinder {
 	return &solutionFinder{
 		cache: make(map[string]finderResult),
 	}
