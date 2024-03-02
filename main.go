@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/cmd/fyne_demo/tutorials"
@@ -8,82 +9,159 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
 )
 
 var mainWindow fyne.Window
 var mainMenu *fyne.Menu
+var deskApp desktop.App
+var serv *server
+var lastMenuIndex = 3
+
+type Action = func()
+
+var NoAction = func() {}
+var StartSeparator = fyne.NewMenuItemSeparator()
+var EndSeparator = fyne.NewMenuItemSeparator()
 
 func main() {
-	a := app.NewWithID("Verify.DiffTrayApp")
-	a.SetIcon(resourceCogsPng)
+	application := app.NewWithID("Verify.DiffTrayApp")
+	application.SetIcon(resourceCogsPng)
 
 	createMainMenu()
 	createTrayIcon()
 	startServer()
-	//startTracker()
 
-	mainWindow = a.NewWindow("Main")
+	mainWindow = application.NewWindow("Main")
 	mainWindow.Resize(fyne.NewSize(640, 460))
 	mainWindow.SetCloseIntercept(func() {
-		//prevent main window from closing
-		mainWindow.Hide()
+		mainWindow.Hide() //prevent main window from closing
 	})
-
-	//content := container.NewMax()
-	//title := widget.NewLabel("Component name")
-	//intro := widget.NewLabel("An introduction would probably go\nhere, as well as a")
-	//intro.Wrapping = fyne.TextWrapWord
-	//setTutorial := func(t tutorials.Tutorial) {
-	//	if fyne.CurrentDevice().IsMobile() {
-	//		child := a.NewWindow(t.Title)
-	//		topWindow = child
-	//		child.SetContent(t.View(topWindow))
-	//		child.Show()
-	//		child.SetOnClosed(func() {
-	//			topWindow = w
-	//		})
-	//		return
-	//	}
-	//	title.SetText(t.Title)
-	//	intro.SetText(t.Intro)
-	//	content.Objects = []fyne.CanvasObject{t.View(w)}
-	//	content.Refresh()
-	//}
-	//tutorial := container.NewBorder(
-	//	container.NewVBox(title, widget.NewSeparator(), intro), nil, nil, nil, content)
-	//if fyne.CurrentDevice().IsMobile() {
-	//	w.SetContent(makeNav(setTutorial, false))
-	//} else {
-	//	split := container.NewHSplit(makeNav(setTutorial, true), tutorial)
-	//	split.Offset = 0.2
-	//	w.SetContent(split)
-	//}
-	//w.Resize(fyne.NewSize(640, 460))
-	//w.ShowAndRun()
-	a.Run()
+	application.Run()
 }
 
 func startServer() {
 	tracker := newTracker(showActiveIcon, showInactiveIcon)
 
-	server := newServer()
-	server.moveHandler = func(cmd *MovePayload) {
+	serv = newServer()
+	serv.moveHandler = func(cmd *MovePayload) {
 		tracker.addMove(cmd.Temp, cmd.Target, cmd.Exe, cmd.Arguments, cmd.CanKill, cmd.ProcessId)
+		updateMenuItems(tracker)
 	}
-	server.deleteHandler = func(cmd *DeletePayload) {
+	serv.deleteHandler = func(cmd *DeletePayload) {
 		tracker.addDelete(cmd.File)
+		updateMenuItems(tracker)
 	}
 
-	server.Start()
+	serv.Start()
+}
+
+func updateMenuItems(t *tracker) {
+	log.Printf("Updating menu")
+
+	//separator := -1
+	//for i, item := range mainMenu.Items {
+	//	if item.IsSeparator {
+	//		separator = i
+	//		break
+	//	}
+	//}
+	//
+	//if separator > -1 {
+	//	mainMenu.Items = append(mainMenu.Items[:separator+1], mainMenu.Items[separator+t.lastCount:]...)
+	//}
+
+	if t.lastCount > 0 {
+		addStartSeparator()
+
+		//Add delete items
+		for d := range t.filesDeleted {
+			td := t.filesDeleted[d]
+			addDeleteMenuItem(lastMenuIndex+1, td, func() {
+				t.acceptDelete(td)
+			})
+		}
+
+		//Add moved items
+		for m := range t.filesMoved {
+			tm := t.filesMoved[m]
+			addMovedMenuItem(lastMenuIndex+1, tm, func() {
+				t.acceptMove(tm)
+			}, func() {
+				t.discardMove(tm)
+			})
+		}
+
+		addEndSeparator()
+	}
+
+	mainMenu.Refresh()
+}
+
+func addMovedMenuItem(index int, move *trackedMove, accept Action, discard Action) {
+	tempName := utils.File.GetFileNameWithoutExtension(move.Temp)
+	targetName := utils.File.GetFileNameWithoutExtension(move.Target)
+	text := getMoveText(move, tempName, targetName)
+
+	menu := fyne.NewMenuItem(text, NoAction)
+	mainMenu.Items = insertMenu(index, menu)
+}
+
+func getMoveText(move *trackedMove, temp string, target string) string {
+	if utils.File.GetFileNameWithoutExtension(temp) == utils.File.GetFileNameWithoutExtension(target) {
+		return fmt.Sprintf("%s (%s)", move.Name, move.Extension)
+	}
+	return fmt.Sprintf("%s > %s (%s)", temp, target, move.Extension)
+}
+
+func addDeleteMenuItem(index int, move *trackedDelete, action Action) {
+	menu := fyne.NewMenuItem(move.Name, action)
+	menu.Icon = resourceAcceptPng
+	mainMenu.Items = insertMenu(index, menu)
+}
+
+func addStartSeparator() {
+	for _, item := range mainMenu.Items {
+		if item == StartSeparator {
+			return
+		}
+	}
+
+	if !mainMenu.Items[lastMenuIndex+1].IsSeparator {
+		mainMenu.Items = insertMenu(lastMenuIndex+1, StartSeparator)
+	}
+}
+
+func addEndSeparator() {
+	for _, item := range mainMenu.Items {
+		if item == EndSeparator {
+			return
+		}
+	}
+
+	if !mainMenu.Items[len(mainMenu.Items)-1].IsSeparator {
+		mainMenu.Items = insertMenu(len(mainMenu.Items)-1, EndSeparator)
+	}
+}
+
+func insertMenu(index int, menuItem *fyne.MenuItem) []*fyne.MenuItem {
+	if len(mainMenu.Items) == index { // nil or empty slice or after last element
+		return append(mainMenu.Items, menuItem)
+	}
+	mainMenu.Items = append(mainMenu.Items[:index+1], mainMenu.Items[index:]...) // index < len(a)
+	mainMenu.Items[index] = menuItem
+	return mainMenu.Items
 }
 
 func showInactiveIcon() {
 	log.Println("Show inactive icon")
+	deskApp.SetSystemTrayIcon(resourceDefaultPng)
 }
 
 func showActiveIcon() {
 	log.Println("Show active icon")
+	deskApp.SetSystemTrayIcon(resourceActivePng)
 }
 
 func logLifecycle(a fyne.App) {
@@ -92,6 +170,7 @@ func logLifecycle(a fyne.App) {
 	})
 	a.Lifecycle().SetOnStopped(func() {
 		log.Println("Lifecycle: Stopped")
+		appStopped()
 	})
 	a.Lifecycle().SetOnEnteredForeground(func() {
 		log.Println("Lifecycle: Entered Foreground")
@@ -99,6 +178,10 @@ func logLifecycle(a fyne.App) {
 	a.Lifecycle().SetOnExitedForeground(func() {
 		log.Println("Lifecycle: Exited Foreground")
 	})
+}
+
+func appStopped() {
+	serv.Stop()
 }
 
 func makeNav(setTutorial func(tutorial tutorials.Tutorial), loadPrevious bool) fyne.CanvasObject {
@@ -156,7 +239,7 @@ func shortcutFocused(s fyne.Shortcut, w fyne.Window) {
 }
 
 func createTrayIcon() {
-	deskApp := fyne.CurrentApp().(desktop.App)
+	deskApp = fyne.CurrentApp().(desktop.App)
 	deskApp.SetSystemTrayMenu(mainMenu)
 	deskApp.SetSystemTrayIcon(resourceCogsPng)
 }

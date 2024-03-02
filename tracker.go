@@ -71,12 +71,14 @@ type tracker struct {
 
 func newTracker(active Active, inactive Inactive) *tracker {
 	return &tracker{
-		active:    active,
-		inactive:  inactive,
-		lastCount: 0,
-		locker:    &sync.Mutex{},
-		processor: newProcessCleaner(),
-		comparer:  newFileComparer(),
+		active:       active,
+		inactive:     inactive,
+		lastCount:    0,
+		locker:       &sync.Mutex{},
+		processor:    newProcessCleaner(),
+		comparer:     newFileComparer(),
+		filesMoved:   map[string]*trackedMove{},
+		filesDeleted: map[string]*trackedDelete{},
 	}
 }
 
@@ -112,6 +114,10 @@ func (t *tracker) addMove(temp, target, exe, arguments string, canKill bool, pro
 	t.locker.Lock()
 	defer t.locker.Unlock()
 
+	t.lastCount += 1
+
+	log.Println("Tracked received move command:", temp, target, exe, arguments, canKill, processId)
+
 	exeFile := utils.File.GetFileName(exe)
 	targetFile := utils.File.GetFileName(target)
 
@@ -122,9 +128,9 @@ func (t *tracker) addMove(temp, target, exe, arguments string, canKill bool, pro
 	moved := newTrackedMove(temp, exe, arguments, target, canKill, processId)
 
 	if len(exeFile) == 0 {
-		log.Printf("Move Added. Target:%s, CanKill:%s, Process:%d", targetFile, moved.CanKill, processId)
+		log.Printf("Move Added. Target:%s, CanKill:%t, Process:%d", targetFile, moved.CanKill, processId)
 	} else {
-		log.Printf("Move Added. Target:%s, CanKill:%s, Process:%d, Command: %s %s", targetFile, moved.CanKill, processId, exeFile, arguments)
+		log.Printf("Move Added. Target:%s, CanKill:%t, Process:%d, Command: %s %s", targetFile, moved.CanKill, processId, exeFile, arguments)
 	}
 
 	if existing, ok := t.filesMoved[target]; ok {
@@ -141,6 +147,10 @@ func (t *tracker) addMove(temp, target, exe, arguments string, canKill bool, pro
 func (t *tracker) addDelete(filePath string) {
 	t.locker.Lock()
 	defer t.locker.Unlock()
+
+	t.lastCount += 1
+
+	log.Println("Tracked received delete command:", filePath)
 
 	if _, ok := t.filesDeleted[filePath]; ok {
 		log.Printf("DeleteUpdated. File: %s", filePath)
@@ -197,4 +207,20 @@ func (t *tracker) toggleActive() {
 	} else {
 		t.inactive()
 	}
+}
+
+func (t *tracker) acceptDelete(del *trackedDelete) {
+	log.Printf("Accepted deleted file: %s", del.Name)
+}
+
+func (t *tracker) acceptMove(mov *trackedMove) {
+	log.Printf("Accepted moved file: %s", mov.Name)
+}
+
+func (t *tracker) discardMove(mov *trackedMove) {
+	log.Printf("Discarded moved file: %s", mov.Name)
+}
+
+func (t *tracker) discardDelete(del *trackedDelete) {
+	log.Printf("Discarded deleted file: %s", del.Name)
 }

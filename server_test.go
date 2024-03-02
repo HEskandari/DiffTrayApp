@@ -21,14 +21,12 @@ var moveMsg = `{
 "ProcessId":10
 }`
 
-var testSettings verifier.VerifySettings
-
-func init() {
-	testSettings = verifier.NewSettings()
-	testSettings.UseDirectory("./_testdata")
+func initVerifier(t *testing.T) verifier.Verifier {
+	return verifier.NewVerifier(t).Configure(verifier.UseDirectory("./_testdata"))
 }
 
 func TestTracker_ReceivingMove(t *testing.T) {
+	var ver = initVerifier(t)
 
 	var receivedDelete *DeletePayload
 	var receivedMove *MovePayload
@@ -57,10 +55,11 @@ func TestTracker_ReceivingMove(t *testing.T) {
 
 	assert.Eventually(t, shouldReceive, 5*time.Second, 2*time.Second)
 
-	verifier.VerifyWithSetting(t, testSettings, receivedMove)
+	ver.Verify(receivedMove)
 }
 
 func TestTracker_ReceivingDelete(t *testing.T) {
+	var ver = initVerifier(t)
 
 	var receivedDelete *DeletePayload
 	var receivedMove *MovePayload
@@ -89,5 +88,5 @@ func TestTracker_ReceivingDelete(t *testing.T) {
 
 	assert.Eventually(t, shouldReceive, 5*time.Second, 2*time.Second)
 
-	verifier.VerifyWithSetting(t, testSettings, receivedDelete)
+	ver.Verify(receivedDelete)
 }
