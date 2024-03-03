@@ -20,6 +20,7 @@ type server struct {
 	processor     chan string
 	moveHandler   MoveMessageHandler
 	deleteHandler DeleteMessageHandler
+	updateHandler Action
 }
 
 func newServer() *server {
@@ -31,29 +32,36 @@ func newServer() *server {
 
 func (s *server) Start() {
 	go s.startReceiver()
-	go s.startProcessor(s.processor)
+	go s.startProcessor()
 }
 
 func (s *server) Stop() {
 	close(s.processor)
 }
 
-func (s *server) startProcessor(input <-chan string) {
+func (s *server) startProcessor() {
 	for {
-		message := <-input
+		message := <-s.processor
+		shouldUpdate := false
 
 		if strings.Contains(message, "\"Type\":\"Move\"") {
 			log.Printf("Move message received: %s", message)
 			moveCommand := MovePayload{}
 			deserialize(message, &moveCommand)
 			s.moveFile(&moveCommand)
+			shouldUpdate = true
 		} else if strings.Contains(message, "\"Type\":\"Delete\"") {
 			log.Printf("Delete message received: %s", message)
 			deleteCommand := DeletePayload{}
 			deserialize(message, &deleteCommand)
 			s.deleteFile(&deleteCommand)
+			shouldUpdate = true
 		} else {
 			log.Printf("Unknown message: %s", message)
+		}
+
+		if shouldUpdate {
+			s.filesUpdated()
 		}
 	}
 }
@@ -99,6 +107,12 @@ func (s *server) deleteFile(command *DeletePayload) {
 func (s *server) moveFile(command *MovePayload) {
 	log.Printf("Moving command received: %+v", command)
 	s.moveHandler(command)
+}
+
+func (s *server) filesUpdated() {
+	if s.updateHandler != nil {
+		s.updateHandler()
+	}
 }
 
 func deserialize(payload string, obj interface{}) {

@@ -17,7 +17,12 @@ var mainWindow fyne.Window
 var mainMenu *fyne.Menu
 var deskApp desktop.App
 var serv *server
-var lastMenuIndex = 3
+var track *tracker
+var lastMenuIndex = 2
+
+var menuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
+var menuLogs = fyne.NewMenuItem("Open logs", onOpenLogs)
+var menuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
 
 type Action = func()
 
@@ -42,54 +47,46 @@ func main() {
 }
 
 func startServer() {
-	tracker := newTracker(showActiveIcon, showInactiveIcon)
+	track = newTracker(showActiveIcon, showInactiveIcon)
 
 	serv = newServer()
 	serv.moveHandler = func(cmd *MovePayload) {
-		tracker.addMove(cmd.Temp, cmd.Target, cmd.Exe, cmd.Arguments, cmd.CanKill, cmd.ProcessId)
-		updateMenuItems(tracker)
+		track.addMove(cmd.Temp, cmd.Target, cmd.Exe, cmd.Arguments, cmd.CanKill, cmd.ProcessId)
 	}
 	serv.deleteHandler = func(cmd *DeletePayload) {
-		tracker.addDelete(cmd.File)
-		updateMenuItems(tracker)
+		track.addDelete(cmd.File)
+	}
+	serv.updateHandler = func() {
+		updateMenuItems()
 	}
 
 	serv.Start()
+	track.Start()
 }
 
-func updateMenuItems(t *tracker) {
+func updateMenuItems() {
 	log.Printf("Updating menu")
 
-	//separator := -1
-	//for i, item := range mainMenu.Items {
-	//	if item.IsSeparator {
-	//		separator = i
-	//		break
-	//	}
-	//}
-	//
-	//if separator > -1 {
-	//	mainMenu.Items = append(mainMenu.Items[:separator+1], mainMenu.Items[separator+t.lastCount:]...)
-	//}
+	clearFileMenus()
 
-	if t.lastCount > 0 {
+	if track.lastCount > 0 {
 		addStartSeparator()
 
 		//Add delete items
-		for d := range t.filesDeleted {
-			td := t.filesDeleted[d]
+		for d := range track.filesDeleted {
+			td := track.filesDeleted[d]
 			addDeleteMenuItem(lastMenuIndex+1, td, func() {
-				t.acceptDelete(td)
+				track.acceptDelete(td)
 			})
 		}
 
 		//Add moved items
-		for m := range t.filesMoved {
-			tm := t.filesMoved[m]
+		for m := range track.filesMoved {
+			tm := track.filesMoved[m]
 			addMovedMenuItem(lastMenuIndex+1, tm, func() {
-				t.acceptMove(tm)
+				track.acceptMove(tm)
 			}, func() {
-				t.discardMove(tm)
+				track.discardMove(tm)
 			})
 		}
 
@@ -97,6 +94,22 @@ func updateMenuItems(t *tracker) {
 	}
 
 	mainMenu.Refresh()
+}
+
+func clearFileMenus() {
+	quitOption := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item.IsQuit
+	})
+
+	if quitOption == -1 {
+		return
+	}
+
+	if lastMenuIndex == quitOption-2 {
+		//No file options are added
+		return
+	}
+	mainMenu.Items = removeElementByRange(mainMenu.Items, lastMenuIndex+1, quitOption-2)
 }
 
 func addMovedMenuItem(index int, move *trackedMove, accept Action, discard Action) {
@@ -122,25 +135,22 @@ func addDeleteMenuItem(index int, move *trackedDelete, action Action) {
 }
 
 func addStartSeparator() {
-	for _, item := range mainMenu.Items {
-		if item == StartSeparator {
-			return
-		}
-	}
+	startIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == StartSeparator
+	})
 
-	if !mainMenu.Items[lastMenuIndex+1].IsSeparator {
+	if startIndex == -1 {
 		mainMenu.Items = insertMenu(lastMenuIndex+1, StartSeparator)
+		lastMenuIndex += 1
 	}
 }
 
 func addEndSeparator() {
-	for _, item := range mainMenu.Items {
-		if item == EndSeparator {
-			return
-		}
-	}
+	endIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == EndSeparator
+	})
 
-	if !mainMenu.Items[len(mainMenu.Items)-1].IsSeparator {
+	if endIndex == -1 {
 		mainMenu.Items = insertMenu(len(mainMenu.Items)-1, EndSeparator)
 	}
 }
@@ -182,6 +192,7 @@ func logLifecycle(a fyne.App) {
 
 func appStopped() {
 	serv.Stop()
+	track.Stop()
 }
 
 func makeNav(setTutorial func(tutorial tutorials.Tutorial), loadPrevious bool) fyne.CanvasObject {
@@ -245,10 +256,7 @@ func createTrayIcon() {
 }
 
 func createMainMenu() {
-	mainMenu = fyne.NewMenu("Main Menu",
-		fyne.NewMenuItem("Options", onOptionsClicked),
-		fyne.NewMenuItem("Open logs", onOpenLogs),
-		fyne.NewMenuItem("Raise issue", onRaiseIssue))
+	mainMenu = fyne.NewMenu("Main Menu", menuOptions, menuLogs, menuIssues)
 }
 
 func onRaiseIssue() {

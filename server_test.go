@@ -40,13 +40,14 @@ func TestTracker_ReceivingMove(t *testing.T) {
 	}
 
 	receiveChan := make(chan string)
+	tracker.processor = receiveChan
 
 	go func() {
 		receiveChan <- moveMsg
 	}()
 
 	go func() {
-		tracker.startProcessor(receiveChan)
+		tracker.startProcessor()
 	}()
 
 	shouldReceive := func() bool {
@@ -73,13 +74,14 @@ func TestTracker_ReceivingDelete(t *testing.T) {
 	}
 
 	receiveChan := make(chan string)
+	tracker.processor = receiveChan
 
 	go func() {
 		receiveChan <- deleteMsg
 	}()
 
 	go func() {
-		tracker.startProcessor(receiveChan)
+		tracker.startProcessor()
 	}()
 
 	shouldReceive := func() bool {
