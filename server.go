@@ -58,8 +58,8 @@ func (s *server) startProcessor() {
 			deserialize(message, &deleteCommand)
 			s.deleteFile(&deleteCommand)
 			shouldUpdate = true
-		} else {
-			log.Printf("Unknown message: %s", message)
+		} else if len(message) > 0 {
+			log.Printf("Unknown message, ignoring: %s", message)
 		}
 
 		if shouldUpdate {

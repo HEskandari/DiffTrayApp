@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
-	"os"
 	"slices"
 )
 
@@ -40,20 +39,11 @@ func init() {
 	initMenu()
 }
 
-func initLogger() {
-	file, err := os.OpenFile("Verify.Logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	log.SetOutput(file)
-}
-
 func initMenu() {
 	menuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
 	menuOptions.Icon = resourceCogsPng
 
-	menuLogs = fyne.NewMenuItem("Open logs", onOpenLogs)
+	menuLogs = fyne.NewMenuItem("Open logs", openLogDirectory)
 	menuLogs.Icon = resourceFolderPng
 
 	menuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
@@ -73,7 +63,8 @@ func main() {
 	mainWindow.SetCloseIntercept(func() {
 		mainWindow.Hide() //prevent main window from closing
 	})
-	application.Run()
+
+	registerAndRun(application)
 }
 
 func startServer() {
@@ -249,25 +240,27 @@ func showActiveIcon() {
 	}
 }
 
-func logLifecycle(a fyne.App) {
-	a.Lifecycle().SetOnStarted(func() {
-		log.Println("Lifecycle: Started")
+func registerAndRun(application fyne.App) {
+	application.Lifecycle().SetOnStarted(func() {
+		log.Println("Application: Started")
 	})
-	a.Lifecycle().SetOnStopped(func() {
-		log.Println("Lifecycle: Stopped")
+	application.Lifecycle().SetOnStopped(func() {
+		log.Println("Application: Stopped")
 		appStopped()
 	})
-	a.Lifecycle().SetOnEnteredForeground(func() {
-		log.Println("Lifecycle: Entered Foreground")
+	application.Lifecycle().SetOnEnteredForeground(func() {
+		log.Println("Application: Entered Foreground")
 	})
-	a.Lifecycle().SetOnExitedForeground(func() {
-		log.Println("Lifecycle: Exited Foreground")
+	application.Lifecycle().SetOnExitedForeground(func() {
+		log.Println("Application: Exited Foreground")
 	})
+	application.Run()
 }
 
 func appStopped() {
 	serv.Stop()
 	track.Stop()
+	closeLogFile()
 }
 
 func makeNav(setTutorial func(tutorial tutorials.Tutorial), loadPrevious bool) fyne.CanvasObject {
@@ -336,9 +329,6 @@ func createMainMenu() {
 }
 
 func onRaiseIssue() {
-}
-
-func onOpenLogs() {
 }
 
 func onOptionsClicked() {
