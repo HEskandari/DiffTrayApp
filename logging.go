@@ -8,7 +8,7 @@ import (
 	"runtime"
 )
 
-var LogsDirectory string = "Logs"
+var LogsDirectory = "Logs"
 var LogFileName = "Verify.Logs.txt"
 var logFile *os.File
 
