@@ -116,12 +116,8 @@ func (t *tracker) scanFiles() {
 		}
 	}
 
-	var count = len(t.filesMoved) + len(t.filesDeleted)
-	if t.lastCount != count {
-		t.toggleActive()
-	}
-
-	t.lastCount = count
+	t.lastCount = len(t.filesMoved) + len(t.filesDeleted)
+	t.toggleActive()
 
 	for _, moved := range t.filesMoved {
 		t.handleScanMove(moved)
@@ -132,20 +128,16 @@ func (t *tracker) trackingAny() bool {
 	return len(t.filesMoved) > 0 || len(t.filesDeleted) > 0
 }
 
-func (t *tracker) moveFile(temp, target, exe, arguments string, canKill bool, processId int) {
-
-}
-
-func (t *tracker) addMove(temp, target, exe, arguments string, canKill bool, processId int) *trackedMove {
+func (t *tracker) addMove(move *MovePayload) {
 	t.locker.Lock()
 	defer t.locker.Unlock()
 
-	log.Println("Tracked received move command:", temp, target, exe, arguments, canKill, processId)
+	log.Println("Tracked received move command:", move.Temp, move.Target, move.Exe, move.Arguments, move.CanKill, move.ProcessId)
 
-	exeFile := utils.File.GetFileName(exe)
-	targetFile := utils.File.GetFileName(target)
+	exeFile := utils.File.GetFileName(move.Exe)
+	targetFile := utils.File.GetFileName(move.Target)
 
-	if _, ok := t.filesMoved[target]; !ok {
+	if _, ok := t.filesMoved[move.Target]; !ok {
 
 		//if processId == 0 {
 		//	processId = existing.Process
@@ -153,15 +145,15 @@ func (t *tracker) addMove(temp, target, exe, arguments string, canKill bool, pro
 		//	//find the actual process with the Id
 		//}
 
-		moved := t.newTrackedMove(temp, exe, arguments, target, canKill, processId)
+		moved := t.newTrackedMove(move.Temp, move.Exe, move.Arguments, move.Target, move.CanKill, move.ProcessId)
 
 		if len(exeFile) == 0 {
-			log.Printf("Move Added. Target:%s, CanKill:%t, Process:%d", targetFile, moved.CanKill, processId)
+			log.Printf("Move Added. Target:%s, CanKill:%t, Process:%d", targetFile, moved.CanKill, move.ProcessId)
 		} else {
-			log.Printf("Move Added. Target:%s, CanKill:%t, Process:%d, Command: %s %s", targetFile, moved.CanKill, processId, exeFile, arguments)
+			log.Printf("Move Added. Target:%s, CanKill:%t, Process:%d, Command: %s %s", targetFile, moved.CanKill, move.ProcessId, exeFile, move.Arguments)
 		}
 
-		t.filesMoved[target] = moved
+		t.filesMoved[move.Target] = moved
 	} else {
 		//update
 		//t.filesMoved[target] = moved
@@ -171,26 +163,26 @@ func (t *tracker) addMove(temp, target, exe, arguments string, canKill bool, pro
 	//	t.processor.TryTerminateProcess(int32(processId))
 	//}
 
-	return t.filesMoved[target]
+	//return t.filesMoved[move.Target]
 }
 
-func (t *tracker) addDelete(filePath string) *trackedDelete {
+func (t *tracker) addDelete(delete *DeletePayload) {
 	t.locker.Lock()
 	defer t.locker.Unlock()
 
-	log.Println("Tracked received delete command:", filePath)
+	log.Println("Tracked received delete command:", delete.File)
 
-	if _, ok := t.filesDeleted[filePath]; !ok {
-		log.Printf("DeleteUpdated. File: %s", filePath)
-		solution := t.finder.Find(filePath)
+	if _, ok := t.filesDeleted[delete.File]; !ok {
+		log.Printf("DeleteUpdated. File: %s", delete.File)
+		solution := t.finder.Find(delete.File)
 		deleted := &trackedDelete{
-			File:  filePath,
-			Name:  utils.File.GetFileName(filePath),
+			File:  delete.File,
+			Name:  utils.File.GetFileName(delete.File),
 			Group: solution,
 		}
-		t.filesDeleted[filePath] = deleted
+		t.filesDeleted[delete.File] = deleted
 	}
-	return t.filesDeleted[filePath]
+	//return t.filesDeleted[filePath]
 }
 
 func (t *tracker) handleScanMove(moved *trackedMove) {
@@ -232,7 +224,7 @@ func (t *tracker) killProcess(moved *trackedMove) {
 }
 
 func (t *tracker) toggleActive() {
-	if len(t.filesMoved) > 0 || len(t.filesDeleted) > 0 {
+	if t.trackingAny() {
 		t.active()
 	} else {
 		t.inactive()

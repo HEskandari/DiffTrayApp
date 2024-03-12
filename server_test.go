@@ -30,14 +30,13 @@ func TestTracker_ReceivingMove(t *testing.T) {
 
 	var receivedDelete *DeletePayload
 	var receivedMove *MovePayload
-	var tracker = newServer()
-
-	tracker.deleteHandler = func(cmd *DeletePayload) {
-		receivedDelete = cmd
-	}
-	tracker.moveHandler = func(cmd *MovePayload) {
+	var tracker = newServer(func(cmd *MovePayload) {
 		receivedMove = cmd
-	}
+	}, func(cmd *DeletePayload) {
+		receivedDelete = cmd
+	}, func() {
+		//No-Op
+	})
 
 	receiveChan := make(chan string)
 	tracker.processor = receiveChan
@@ -64,14 +63,13 @@ func TestTracker_ReceivingDelete(t *testing.T) {
 
 	var receivedDelete *DeletePayload
 	var receivedMove *MovePayload
-	var tracker = newServer()
-
-	tracker.deleteHandler = func(cmd *DeletePayload) {
-		receivedDelete = cmd
-	}
-	tracker.moveHandler = func(cmd *MovePayload) {
+	var tracker = newServer(func(cmd *MovePayload) {
 		receivedMove = cmd
-	}
+	}, func(cmd *DeletePayload) {
+		receivedDelete = cmd
+	}, func() {
+		//No-Op
+	})
 
 	receiveChan := make(chan string)
 	tracker.processor = receiveChan

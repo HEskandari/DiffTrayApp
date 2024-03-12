@@ -49,17 +49,7 @@ func main() {
 func startServer() {
 	track = newTracker(showActiveIcon, showInactiveIcon)
 
-	serv = newServer()
-	serv.moveHandler = func(cmd *MovePayload) {
-		track.addMove(cmd.Temp, cmd.Target, cmd.Exe, cmd.Arguments, cmd.CanKill, cmd.ProcessId)
-	}
-	serv.deleteHandler = func(cmd *DeletePayload) {
-		track.addDelete(cmd.File)
-	}
-	serv.updateHandler = func() {
-		updateMenuItems()
-	}
-
+	serv = newServer(track.addMove, track.addDelete, updateMenuItems)
 	serv.Start()
 	track.Start()
 }
@@ -69,7 +59,7 @@ func updateMenuItems() {
 
 	clearFileMenus()
 
-	if track.lastCount > 0 {
+	if track.trackingAny() {
 		addStartSeparator()
 
 		//Add delete items

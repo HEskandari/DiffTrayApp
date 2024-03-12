@@ -23,9 +23,12 @@ type server struct {
 	updateHandler Action
 }
 
-func newServer() *server {
+func newServer(moveHandler MoveMessageHandler, deleteHandler DeleteMessageHandler, action Action) *server {
 	srv := &server{
-		processor: make(chan string, 1),
+		processor:     make(chan string, 1),
+		moveHandler:   moveHandler,
+		deleteHandler: deleteHandler,
+		updateHandler: action,
 	}
 	return srv
 }
