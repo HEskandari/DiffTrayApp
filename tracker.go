@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/VerifyTests/Verify.Go/diff"
 	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
@@ -111,7 +110,7 @@ func (t *tracker) Stop() {
 }
 
 func (t *tracker) scanFiles() {
-	fmt.Println("Scanning...")
+	log.Printf("Scanner ran at: %s", time.Now())
 	modified := false
 
 	for _, deleted := range t.filesDeleted {
@@ -221,12 +220,12 @@ func (t *tracker) removeAndKill(moved *trackedMove) bool {
 
 func (t *tracker) killProcess(moved *trackedMove) {
 	if !moved.CanKill {
-		log.Printf("did not kill for %s since CanKill=false", moved.Name)
+		log.Printf("Did not kill for %s since CanKill=false", moved.Name)
 		return
 	}
 
 	if moved.Process == 0 {
-		log.Printf("no processes to kill for %s", moved.Name)
+		log.Printf("No processes to kill for %s", moved.Name)
 		return
 	}
 

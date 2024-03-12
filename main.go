@@ -32,6 +32,7 @@ type Action = func()
 var NoAction = func() {}
 var StartSeparator = fyne.NewMenuItemSeparator()
 var EndSeparator = fyne.NewMenuItemSeparator()
+var CurrentAppIcon *fyne.StaticResource
 
 func init() {
 	initLogger()
@@ -233,13 +234,19 @@ func insertMenu(menuItem *fyne.MenuItem) {
 //}
 
 func showInactiveIcon() {
-	log.Println("Show inactive icon")
-	deskApp.SetSystemTrayIcon(resourceDefaultPng)
+	if CurrentAppIcon != resourceDefaultPng {
+		log.Println("Show inactive icon")
+		CurrentAppIcon = resourceDefaultPng
+		deskApp.SetSystemTrayIcon(CurrentAppIcon)
+	}
 }
 
 func showActiveIcon() {
-	log.Println("Show active icon")
-	deskApp.SetSystemTrayIcon(resourceActivePng)
+	if CurrentAppIcon != resourceActivePng {
+		log.Println("Show active icon")
+		CurrentAppIcon = resourceActivePng
+		deskApp.SetSystemTrayIcon(CurrentAppIcon)
+	}
 }
 
 func logLifecycle(a fyne.App) {
@@ -318,9 +325,10 @@ func shortcutFocused(s fyne.Shortcut, w fyne.Window) {
 }
 
 func createTrayIcon() {
+	CurrentAppIcon = resourceDefaultPng
 	deskApp = fyne.CurrentApp().(desktop.App)
 	deskApp.SetSystemTrayMenu(mainMenu)
-	deskApp.SetSystemTrayIcon(resourceCogsPng)
+	deskApp.SetSystemTrayIcon(CurrentAppIcon)
 }
 
 func createMainMenu() {
