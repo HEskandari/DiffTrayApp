@@ -60,30 +60,32 @@ type trackedDelete struct {
 }
 
 type tracker struct {
-	lastCount    int
-	active       Active
-	inactive     Inactive
-	filesDeleted map[string]*trackedDelete
-	filesMoved   map[string]*trackedMove
-	finder       *solutionFinder
-	locker       *sync.Mutex
-	processor    *processCleaner
-	comparer     *fileComparer
-	ticker       *time.Ticker
-	stop         chan struct{}
+	lastCount     int
+	active        Active
+	inactive      Inactive
+	scanCompleted Action
+	filesDeleted  map[string]*trackedDelete
+	filesMoved    map[string]*trackedMove
+	finder        *solutionFinder
+	locker        *sync.Mutex
+	processor     *processCleaner
+	comparer      *fileComparer
+	ticker        *time.Ticker
+	stop          chan struct{}
 }
 
-func newTracker(active Active, inactive Inactive) *tracker {
+func newTracker(active Active, inactive Inactive, scanCompleted Action) *tracker {
 	return &tracker{
-		active:       active,
-		inactive:     inactive,
-		lastCount:    0,
-		locker:       &sync.Mutex{},
-		processor:    newProcessCleaner(),
-		comparer:     newFileComparer(),
-		finder:       newProjectFinder(),
-		filesMoved:   map[string]*trackedMove{},
-		filesDeleted: map[string]*trackedDelete{},
+		active:        active,
+		inactive:      inactive,
+		scanCompleted: scanCompleted,
+		lastCount:     0,
+		locker:        &sync.Mutex{},
+		processor:     newProcessCleaner(),
+		comparer:      newFileComparer(),
+		finder:        newProjectFinder(),
+		filesMoved:    map[string]*trackedMove{},
+		filesDeleted:  map[string]*trackedDelete{},
 	}
 }
 
@@ -110,9 +112,12 @@ func (t *tracker) Stop() {
 
 func (t *tracker) scanFiles() {
 	fmt.Println("Scanning...")
+	modified := false
+
 	for _, deleted := range t.filesDeleted {
 		if !utils.File.Exists(deleted.File) {
 			delete(t.filesDeleted, deleted.File)
+			modified = true
 		}
 	}
 
@@ -120,12 +125,17 @@ func (t *tracker) scanFiles() {
 	t.toggleActive()
 
 	for _, moved := range t.filesMoved {
-		t.handleScanMove(moved)
+		killed := t.handleScanMove(moved)
+		if killed && !modified {
+			modified = true
+		}
 	}
+
+	t.scanFinished(modified)
 }
 
 func (t *tracker) trackingAny() bool {
-	return len(t.filesMoved) > 0 || len(t.filesDeleted) > 0
+	return t.getCount() > 0
 }
 
 func (t *tracker) addMove(move *MovePayload) {
@@ -182,31 +192,31 @@ func (t *tracker) addDelete(delete *DeletePayload) {
 		}
 		t.filesDeleted[delete.File] = deleted
 	}
-	//return t.filesDeleted[filePath]
 }
 
-func (t *tracker) handleScanMove(moved *trackedMove) {
+func (t *tracker) handleScanMove(moved *trackedMove) bool {
 	if !utils.File.Exists(moved.Temp) {
-		t.removeAndKill(moved)
-		return
+		return t.removeAndKill(moved)
 	}
 
 	if !utils.File.Exists(moved.Target) {
-		return
+		return false
 	}
 
 	if !t.comparer.FilesAreEqual(moved.Temp, moved.Target) {
-		return
+		return false
 	}
 
-	t.removeAndKill(moved)
+	return t.removeAndKill(moved)
 }
 
-func (t *tracker) removeAndKill(moved *trackedMove) {
+func (t *tracker) removeAndKill(moved *trackedMove) bool {
 	if _, ok := t.filesMoved[moved.Target]; ok {
 		delete(t.filesMoved, moved.Target)
 		t.killProcess(moved)
+		return true
 	}
+	return false
 }
 
 func (t *tracker) killProcess(moved *trackedMove) {
@@ -245,4 +255,22 @@ func (t *tracker) discardMove(mov *trackedMove) {
 
 func (t *tracker) discardDelete(del *trackedDelete) {
 	log.Printf("Discarded deleted file: %s", del.Name)
+}
+
+func (t *tracker) acceptAll() {
+	log.Printf("Accepting all files")
+}
+
+func (t *tracker) clear() {
+	log.Printf("Clearing all files")
+}
+
+func (t *tracker) getCount() int {
+	return len(t.filesMoved) + len(t.filesDeleted)
+}
+
+func (t *tracker) scanFinished(modified bool) {
+	if modified {
+		t.scanCompleted()
+	}
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -99,7 +98,7 @@ func check(err error, message string) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%s\n", message)
+	log.Printf("%s\n", message)
 }
 
 func (s *server) deleteFile(command *DeletePayload) {
@@ -121,7 +120,7 @@ func (s *server) filesUpdated() {
 func deserialize(payload string, obj interface{}) {
 	err := json.Unmarshal([]byte(payload), obj)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 

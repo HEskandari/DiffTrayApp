@@ -11,6 +11,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
+	"os"
+	"slices"
 )
 
 var mainWindow fyne.Window
@@ -18,17 +20,44 @@ var mainMenu *fyne.Menu
 var deskApp desktop.App
 var serv *server
 var track *tracker
-var lastMenuIndex = 2
 
-var menuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
-var menuLogs = fyne.NewMenuItem("Open logs", onOpenLogs)
-var menuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
+//var lastMenuIndex = 2
+
+var menuOptions *fyne.MenuItem
+var menuLogs *fyne.MenuItem
+var menuIssues *fyne.MenuItem
 
 type Action = func()
 
 var NoAction = func() {}
 var StartSeparator = fyne.NewMenuItemSeparator()
 var EndSeparator = fyne.NewMenuItemSeparator()
+
+func init() {
+	initLogger()
+
+	initMenu()
+}
+
+func initLogger() {
+	file, err := os.OpenFile("Verify.Logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.SetOutput(file)
+}
+
+func initMenu() {
+	menuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
+	menuOptions.Icon = resourceCogsPng
+
+	menuLogs = fyne.NewMenuItem("Open logs", onOpenLogs)
+	menuLogs.Icon = resourceFolderPng
+
+	menuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
+	menuIssues.Icon = resourceLinkPng
+}
 
 func main() {
 	application := app.NewWithID("Verify.DiffTrayApp")
@@ -47,9 +76,9 @@ func main() {
 }
 
 func startServer() {
-	track = newTracker(showActiveIcon, showInactiveIcon)
-
+	track = newTracker(showActiveIcon, showInactiveIcon, updateMenuItems)
 	serv = newServer(track.addMove, track.addDelete, updateMenuItems)
+
 	serv.Start()
 	track.Start()
 }
@@ -62,10 +91,15 @@ func updateMenuItems() {
 	if track.trackingAny() {
 		addStartSeparator()
 
+		addAcceptAllMenuItem()
+		addClearAllMenuItem()
+
+		addStartSeparator()
+
 		//Add delete items
 		for d := range track.filesDeleted {
 			td := track.filesDeleted[d]
-			addDeleteMenuItem(lastMenuIndex+1, td, func() {
+			addDeleteMenuItem(td, func() {
 				track.acceptDelete(td)
 			})
 		}
@@ -73,7 +107,7 @@ func updateMenuItems() {
 		//Add moved items
 		for m := range track.filesMoved {
 			tm := track.filesMoved[m]
-			addMovedMenuItem(lastMenuIndex+1, tm, func() {
+			addMovedMenuItem(tm, func() {
 				track.acceptMove(tm)
 			}, func() {
 				track.discardMove(tm)
@@ -87,28 +121,50 @@ func updateMenuItems() {
 }
 
 func clearFileMenus() {
+
+	if len(mainMenu.Items) == 5 {
+		return
+	}
+
 	quitOption := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
 		return item.IsQuit
+	})
+
+	menuIssuesIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == menuIssues
 	})
 
 	if quitOption == -1 {
 		return
 	}
 
-	if lastMenuIndex == quitOption-2 {
-		//No file options are added
-		return
-	}
-	mainMenu.Items = removeElementByRange(mainMenu.Items, lastMenuIndex+1, quitOption-2)
+	//if lastMenuIndex == quitOption-2 {
+	//	//No file options are added
+	//	return
+	//}
+	//mainMenu.Items = removeElementByRange(mainMenu.Items, menuIssuesIndex+1, quitOption-2)
+	mainMenu.Items = append(mainMenu.Items[:menuIssuesIndex+1], mainMenu.Items[quitOption-2:]...)
 }
 
-func addMovedMenuItem(index int, move *trackedMove, accept Action, discard Action) {
+func addAcceptAllMenuItem() {
+	menu := fyne.NewMenuItem(fmt.Sprintf("Accept all (%d)", track.getCount()), track.acceptAll)
+	menu.Icon = resourceDiscardPng
+	insertMenu(menu)
+}
+
+func addClearAllMenuItem() {
+	menu := fyne.NewMenuItem(fmt.Sprintf("Discard (%d)", track.getCount()), track.clear)
+	menu.Icon = resourceDiscardPng
+	insertMenu(menu)
+}
+
+func addMovedMenuItem(move *trackedMove, accept Action, discard Action) {
 	tempName := utils.File.GetFileNameWithoutExtension(move.Temp)
 	targetName := utils.File.GetFileNameWithoutExtension(move.Target)
 	text := getMoveText(move, tempName, targetName)
 
 	menu := fyne.NewMenuItem(text, NoAction)
-	mainMenu.Items = insertMenu(index, menu)
+	insertMenu(menu)
 }
 
 func getMoveText(move *trackedMove, temp string, target string) string {
@@ -118,21 +174,25 @@ func getMoveText(move *trackedMove, temp string, target string) string {
 	return fmt.Sprintf("%s > %s (%s)", temp, target, move.Extension)
 }
 
-func addDeleteMenuItem(index int, move *trackedDelete, action Action) {
+func addDeleteMenuItem(move *trackedDelete, action Action) {
 	menu := fyne.NewMenuItem(move.Name, action)
 	menu.Icon = resourceAcceptPng
-	mainMenu.Items = insertMenu(index, menu)
+	insertMenu(menu)
 }
 
 func addStartSeparator() {
-	startIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item == StartSeparator
-	})
+	//endIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+	//	return item.IsQuit
+	//})
+	//
+	//startIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+	//	return item == StartSeparator
+	//})
 
-	if startIndex == -1 {
-		mainMenu.Items = insertMenu(lastMenuIndex+1, StartSeparator)
-		lastMenuIndex += 1
-	}
+	//if startIndex == -1 {
+	//lastMenuIndex += 1
+	insertMenu(StartSeparator)
+	//}
 }
 
 func addEndSeparator() {
@@ -141,18 +201,36 @@ func addEndSeparator() {
 	})
 
 	if endIndex == -1 {
-		mainMenu.Items = insertMenu(len(mainMenu.Items)-1, EndSeparator)
+		insertMenu(EndSeparator)
 	}
 }
 
-func insertMenu(index int, menuItem *fyne.MenuItem) []*fyne.MenuItem {
-	if len(mainMenu.Items) == index { // nil or empty slice or after last element
-		return append(mainMenu.Items, menuItem)
-	}
-	mainMenu.Items = append(mainMenu.Items[:index+1], mainMenu.Items[index:]...) // index < len(a)
-	mainMenu.Items[index] = menuItem
-	return mainMenu.Items
+func insertMenu(menuItem *fyne.MenuItem) {
+	//endIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+	//	return item.IsQuit
+	//})
+
+	menuIssuesIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == menuIssues
+	})
+
+	//if len(mainMenu.Items) == index { // nil or empty slice or after last element
+	//	return append(mainMenu.Items, menuItem)
+	//}
+	mainMenu.Items = slices.Insert(mainMenu.Items, menuIssuesIndex+1, menuItem)
+	//mainMenu.Items = append(mainMenu.Items[:menuIssuesIndex+1], menuItem, mainMenu.Items[menuIssuesIndex+2:]...)
+	//mainMenu.Items[index] = menuItem
+	//return mainMenu.Items
 }
+
+//func insertMenu(index int, menuItem *fyne.MenuItem) []*fyne.MenuItem {
+//	if len(mainMenu.Items) == index { // nil or empty slice or after last element
+//		return append(mainMenu.Items, menuItem)
+//	}
+//	mainMenu.Items = append(mainMenu.Items[:index+1], mainMenu.Items[index:]...) // index < len(a)
+//	mainMenu.Items[index] = menuItem
+//	return mainMenu.Items
+//}
 
 func showInactiveIcon() {
 	log.Println("Show inactive icon")
