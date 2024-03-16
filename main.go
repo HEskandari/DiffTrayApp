@@ -15,23 +15,23 @@ import (
 )
 
 var mainWindow fyne.Window
-var mainMenu *fyne.Menu
 var deskApp desktop.App
 var serv *server
 var track *tracker
 
-//var lastMenuIndex = 2
+var MainMenu *fyne.Menu
+var MenuOptions *fyne.MenuItem
+var MenuLogs *fyne.MenuItem
+var MenuIssues *fyne.MenuItem
+var MenuQuitApp *fyne.MenuItem
+var StartSeparator = fyne.NewMenuItemSeparator()
+var EndSeparator = fyne.NewMenuItemSeparator()
 
-var menuOptions *fyne.MenuItem
-var menuLogs *fyne.MenuItem
-var menuIssues *fyne.MenuItem
+var CurrentAppIcon *fyne.StaticResource
 
 type Action = func()
 
 var NoAction = func() {}
-var StartSeparator = fyne.NewMenuItemSeparator()
-var EndSeparator = fyne.NewMenuItemSeparator()
-var CurrentAppIcon *fyne.StaticResource
 
 func init() {
 	initLogger()
@@ -39,15 +39,24 @@ func init() {
 	initMenu()
 }
 
+func debugMenu() {
+	for i, item := range MainMenu.Items {
+		println(i, item.Label)
+	}
+}
+
 func initMenu() {
-	menuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
-	menuOptions.Icon = resourceCogsPng
+	MenuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
+	MenuOptions.Icon = resourceCogsPng
 
-	menuLogs = fyne.NewMenuItem("Open logs", openLogDirectory)
-	menuLogs.Icon = resourceFolderPng
+	MenuLogs = fyne.NewMenuItem("Open logs", openLogDirectory)
+	MenuLogs.Icon = resourceFolderPng
 
-	menuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
-	menuIssues.Icon = resourceLinkPng
+	MenuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
+	MenuIssues.Icon = resourceLinkPng
+
+	MenuQuitApp = fyne.NewMenuItem("Quit", nil)
+	MenuQuitApp.IsQuit = true
 }
 
 func main() {
@@ -67,6 +76,10 @@ func main() {
 	registerAndRun(application)
 }
 
+func createMainMenu() {
+	MainMenu = fyne.NewMenu("Main Menu", MenuOptions, MenuLogs, MenuIssues, EndSeparator, MenuQuitApp)
+}
+
 func startServer() {
 	track = newTracker(showActiveIcon, showInactiveIcon, updateMenuItems)
 	serv = newServer(track.addMove, track.addDelete, updateMenuItems)
@@ -83,8 +96,8 @@ func updateMenuItems() {
 	if track.trackingAny() {
 		addStartSeparator()
 
+		addDiscardAllMenuItem()
 		addAcceptAllMenuItem()
-		addClearAllMenuItem()
 
 		addStartSeparator()
 
@@ -92,7 +105,7 @@ func updateMenuItems() {
 		for d := range track.filesDeleted {
 			td := track.filesDeleted[d]
 			addDeleteMenuItem(td, func() {
-				track.acceptDelete(td)
+				acceptDelete(td)
 			})
 		}
 
@@ -100,42 +113,52 @@ func updateMenuItems() {
 		for m := range track.filesMoved {
 			tm := track.filesMoved[m]
 			addMovedMenuItem(tm, func() {
-				track.acceptMove(tm)
+				acceptMove(tm)
 			}, func() {
-				track.discardMove(tm)
+				discardMove(tm)
 			})
 		}
 
 		addEndSeparator()
 	}
 
-	mainMenu.Refresh()
+	MainMenu.Refresh()
+}
+
+func discardMove(tm *trackedMove) {
+	track.discardMove(tm)
+	updateMenuItems()
+}
+
+func acceptMove(tm *trackedMove) {
+	track.acceptMove(tm)
+	updateMenuItems()
+}
+
+func acceptDelete(td *trackedDelete) {
+	track.acceptDelete(td)
+	updateMenuItems()
 }
 
 func clearFileMenus() {
 
-	if len(mainMenu.Items) == 5 {
+	if len(MainMenu.Items) == 5 {
 		return
 	}
 
-	quitOption := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+	quitOption := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
 		return item.IsQuit
 	})
 
-	menuIssuesIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item == menuIssues
+	menuIssuesIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == MenuIssues
 	})
 
 	if quitOption == -1 {
 		return
 	}
 
-	//if lastMenuIndex == quitOption-2 {
-	//	//No file options are added
-	//	return
-	//}
-	//mainMenu.Items = removeElementByRange(mainMenu.Items, menuIssuesIndex+1, quitOption-2)
-	mainMenu.Items = append(mainMenu.Items[:menuIssuesIndex+1], mainMenu.Items[quitOption-2:]...)
+	MainMenu.Items = append(MainMenu.Items[:menuIssuesIndex+1], MainMenu.Items[quitOption-2:]...)
 }
 
 func addAcceptAllMenuItem() {
@@ -144,8 +167,8 @@ func addAcceptAllMenuItem() {
 	insertMenu(menu)
 }
 
-func addClearAllMenuItem() {
-	menu := fyne.NewMenuItem(fmt.Sprintf("Discard (%d)", track.getCount()), track.clear)
+func addDiscardAllMenuItem() {
+	menu := fyne.NewMenuItem(fmt.Sprintf("Discard (%d)", track.getCount()), track.discard)
 	menu.Icon = resourceDiscardPng
 	insertMenu(menu)
 }
@@ -157,6 +180,15 @@ func addMovedMenuItem(move *trackedMove, accept Action, discard Action) {
 
 	menu := fyne.NewMenuItem(text, NoAction)
 	insertMenu(menu)
+
+	menu.ChildMenu = fyne.NewMenu("",
+		fyne.NewMenuItem("Accept move", accept),
+		fyne.NewMenuItem("Discard", discard))
+
+	if len(move.Exe) > 0 {
+		menu.ChildMenu.Items = append(menu.ChildMenu.Items,
+			fyne.NewMenuItem("Open diff tool", launchDiffTool))
+	}
 }
 
 func getMoveText(move *trackedMove, temp string, target string) string {
@@ -173,22 +205,11 @@ func addDeleteMenuItem(move *trackedDelete, action Action) {
 }
 
 func addStartSeparator() {
-	//endIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
-	//	return item.IsQuit
-	//})
-	//
-	//startIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
-	//	return item == StartSeparator
-	//})
-
-	//if startIndex == -1 {
-	//lastMenuIndex += 1
 	insertMenu(StartSeparator)
-	//}
 }
 
 func addEndSeparator() {
-	endIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+	endIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
 		return item == EndSeparator
 	})
 
@@ -198,30 +219,30 @@ func addEndSeparator() {
 }
 
 func insertMenu(menuItem *fyne.MenuItem) {
-	//endIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
+	//endIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
 	//	return item.IsQuit
 	//})
 
-	menuIssuesIndex := findIndex(mainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item == menuIssues
+	menuIssuesIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == MenuIssues
 	})
 
-	//if len(mainMenu.Items) == index { // nil or empty slice or after last element
-	//	return append(mainMenu.Items, menuItem)
+	//if len(MainMenu.Items) == index { // nil or empty slice or after last element
+	//	return append(MainMenu.Items, menuItem)
 	//}
-	mainMenu.Items = slices.Insert(mainMenu.Items, menuIssuesIndex+1, menuItem)
-	//mainMenu.Items = append(mainMenu.Items[:menuIssuesIndex+1], menuItem, mainMenu.Items[menuIssuesIndex+2:]...)
-	//mainMenu.Items[index] = menuItem
-	//return mainMenu.Items
+	MainMenu.Items = slices.Insert(MainMenu.Items, menuIssuesIndex+1, menuItem)
+	//MainMenu.Items = append(MainMenu.Items[:menuIssuesIndex+1], menuItem, MainMenu.Items[menuIssuesIndex+2:]...)
+	//MainMenu.Items[index] = menuItem
+	//return MainMenu.Items
 }
 
 //func insertMenu(index int, menuItem *fyne.MenuItem) []*fyne.MenuItem {
-//	if len(mainMenu.Items) == index { // nil or empty slice or after last element
-//		return append(mainMenu.Items, menuItem)
+//	if len(MainMenu.Items) == index { // nil or empty slice or after last element
+//		return append(MainMenu.Items, menuItem)
 //	}
-//	mainMenu.Items = append(mainMenu.Items[:index+1], mainMenu.Items[index:]...) // index < len(a)
-//	mainMenu.Items[index] = menuItem
-//	return mainMenu.Items
+//	MainMenu.Items = append(MainMenu.Items[:index+1], MainMenu.Items[index:]...) // index < len(a)
+//	MainMenu.Items[index] = menuItem
+//	return MainMenu.Items
 //}
 
 func showInactiveIcon() {
@@ -320,12 +341,8 @@ func shortcutFocused(s fyne.Shortcut, w fyne.Window) {
 func createTrayIcon() {
 	CurrentAppIcon = resourceDefaultPng
 	deskApp = fyne.CurrentApp().(desktop.App)
-	deskApp.SetSystemTrayMenu(mainMenu)
+	deskApp.SetSystemTrayMenu(MainMenu)
 	deskApp.SetSystemTrayIcon(CurrentAppIcon)
-}
-
-func createMainMenu() {
-	mainMenu = fyne.NewMenu("Main Menu", menuOptions, menuLogs, menuIssues)
 }
 
 func onRaiseIssue() {

@@ -241,15 +241,29 @@ func (t *tracker) toggleActive() {
 }
 
 func (t *tracker) acceptDelete(del *trackedDelete) {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
 	log.Printf("Accepted deleted file: %s", del.Name)
+	delete(t.filesDeleted, del.File)
+	safeDelete(del.File)
 }
 
-func (t *tracker) acceptMove(mov *trackedMove) {
-	log.Printf("Accepted moved file: %s", mov.Name)
+func (t *tracker) acceptMove(move *trackedMove) {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
+	log.Printf("Accepted moved file: %s", move.Name)
+	delete(t.filesMoved, move.Temp)
+	t.innerMove(move)
 }
 
-func (t *tracker) discardMove(mov *trackedMove) {
-	log.Printf("Discarded moved file: %s", mov.Name)
+func (t *tracker) discardMove(move *trackedMove) {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
+	log.Printf("Discarded moved file: %s", move.Name)
+	t.innerDiscard(move)
 }
 
 func (t *tracker) discardDelete(del *trackedDelete) {
@@ -257,11 +271,64 @@ func (t *tracker) discardDelete(del *trackedDelete) {
 }
 
 func (t *tracker) acceptAll() {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
 	log.Printf("Accepting all files")
+
+	t.acceptAllDeletes()
+	t.acceptAllMoves()
 }
 
-func (t *tracker) clear() {
-	log.Printf("Clearing all files")
+func (t *tracker) acceptAllDeletes() {
+	for _, deleted := range t.filesDeleted {
+		if utils.File.Exists(deleted.File) {
+			utils.File.Delete(deleted.File)
+		}
+	}
+
+	t.filesDeleted = make(map[string]*trackedDelete)
+}
+
+func (t *tracker) acceptAllMoves() {
+	for _, move := range t.filesMoved {
+		t.innerMove(move)
+	}
+
+	t.filesMoved = make(map[string]*trackedMove)
+}
+
+func (t *tracker) innerMove(move *trackedMove) {
+	t.killProcess(move)
+
+	if !safeMoveFile(move.Temp, move.Target) {
+		return
+	}
+
+	dir := utils.File.GetDirectoryName(move.Temp)
+	safeDeleteDirectory(dir)
+}
+
+func (t *tracker) innerDiscard(move *trackedMove) {
+	t.killProcess(move)
+
+	if !safeDelete(move.Temp) {
+		return
+	}
+
+	dir := utils.File.GetDirectoryName(move.Temp)
+	safeDeleteDirectory(dir)
+}
+
+func (t *tracker) discard() {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
+	log.Printf("Discarding all files")
+
+	for _, deleted := range t.filesDeleted {
+		delete(t.filesDeleted, deleted.File)
+	}
 }
 
 func (t *tracker) getCount() int {
