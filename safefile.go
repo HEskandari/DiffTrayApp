@@ -7,6 +7,13 @@ import (
 	"os"
 )
 
+func safeCreateDirectory(directory string) error {
+	if !utils.File.Exists(directory) {
+		return os.Mkdir(directory, 0755)
+	}
+	return nil
+}
+
 func safeMoveFile(sourcePath, destPath string) bool {
 	inputFile, err := os.Open(sourcePath)
 	if err != nil {

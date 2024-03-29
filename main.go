@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2/cmd/fyne_demo/tutorials"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/VerifyTests/Verify.Go/utils"
@@ -14,6 +15,7 @@ import (
 	"slices"
 )
 
+var application fyne.App
 var mainWindow fyne.Window
 var deskApp desktop.App
 var serv *server
@@ -27,7 +29,7 @@ var MenuQuitApp *fyne.MenuItem
 var StartSeparator = fyne.NewMenuItemSeparator()
 var EndSeparator = fyne.NewMenuItemSeparator()
 
-var CurrentAppIcon *fyne.StaticResource
+var CurrentAppIcon *theme.ThemedResource
 
 type Action = func()
 
@@ -60,8 +62,7 @@ func initMenu() {
 }
 
 func main() {
-	application := app.NewWithID("Verify.DiffTrayApp")
-	application.SetIcon(resourceCogsPng)
+	application = app.NewWithID("Verify.DiffTrayApp")
 
 	createMainMenu()
 	createTrayIcon()
@@ -246,19 +247,20 @@ func insertMenu(menuItem *fyne.MenuItem) {
 //}
 
 func showInactiveIcon() {
-	if CurrentAppIcon != resourceDefaultPng {
-		log.Println("Show inactive icon")
-		CurrentAppIcon = resourceDefaultPng
-		deskApp.SetSystemTrayIcon(CurrentAppIcon)
-	}
+	//if CurrentAppIcon.Name() !=  {
+	log.Println("Show inactive icon")
+	CurrentAppIcon = theme.NewThemedResource(theme.GridIcon())
+	deskApp.SetSystemTrayIcon(CurrentAppIcon)
+	//}
 }
 
 func showActiveIcon() {
-	if CurrentAppIcon != resourceActivePng {
-		log.Println("Show active icon")
-		CurrentAppIcon = resourceActivePng
-		deskApp.SetSystemTrayIcon(CurrentAppIcon)
-	}
+	//log.Printf("Current icon name: %s", CurrentAppIconName)
+	//if CurrentAppIconName != "Active" {
+	log.Println("Show active icon")
+	CurrentAppIcon = theme.NewWarningThemedResource(theme.GridIcon())
+	deskApp.SetSystemTrayIcon(CurrentAppIcon)
+	//}
 }
 
 func registerAndRun(application fyne.App) {
@@ -339,7 +341,7 @@ func shortcutFocused(s fyne.Shortcut, w fyne.Window) {
 }
 
 func createTrayIcon() {
-	CurrentAppIcon = resourceDefaultPng
+	CurrentAppIcon = theme.NewThemedResource(theme.GridIcon()) //resourceDefaultSvg)
 	deskApp = fyne.CurrentApp().(desktop.App)
 	deskApp.SetSystemTrayMenu(MainMenu)
 	deskApp.SetSystemTrayIcon(CurrentAppIcon)
@@ -349,4 +351,36 @@ func onRaiseIssue() {
 }
 
 func onOptionsClicked() {
+	log.Printf("Options menu clicked")
+
+	dialogWindow := application.NewWindow("Dialog resize")
+	dialogWindow.Resize(fyne.NewSize(300, 300))
+	dialogWindow.CenterOnScreen()
+
+	label1 := widget.NewLabel("Version: ")
+	value1 := widget.NewLabel("v1.0.0")
+
+	grid := container.New(layout.NewFormLayout(), label1, value1)
+
+	dialogWindow.SetContent(grid)
+
+	dialogWindow.Show()
+	dialogWindow.RequestFocus()
+
+	//runPopUp(dialogWindow)
+}
+
+var modal *widget.PopUp
+
+func runPopUp(w fyne.Window) *widget.PopUp {
+	modal := widget.NewModalPopUp(
+		container.NewVBox(
+			widget.NewLabel("bar"),
+			widget.NewButton("Close", func() { modal.Hide() }),
+		),
+		w.Canvas(),
+	)
+	modal.Move(fyne.NewPos(100, 100))
+	modal.Show()
+	return modal
 }

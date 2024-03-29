@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
 	"os"
 	"os/exec"
@@ -13,11 +12,11 @@ var LogFileName = "Verify.Logs.txt"
 var logFile *os.File
 
 func initLogger() {
-	err := utils.File.CreateDirectory(LogsDirectory)
+	err := safeCreateDirectory(LogsDirectory)
 	if err != nil {
 		panic("Could not create logs directory: " + LogsDirectory)
 	}
-	logFile, err := os.OpenFile(LogsDirectory+"/"+LogFileName, os.O_APPEND|os.O_RDWR|os.O_CREATE, 0666)
+	logFile, err := os.OpenFile(LogsDirectory+"/"+LogFileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0755)
 	if err != nil {
 		log.Panic("Failed to open log file: " + LogFileName + ". Error: " + err.Error())
 	}
