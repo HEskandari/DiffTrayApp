@@ -59,7 +59,7 @@ type trackedDelete struct {
 }
 
 type tracker struct {
-	lastCount     int
+	//lastCount     int
 	active        Active
 	inactive      Inactive
 	scanCompleted Action
@@ -78,7 +78,6 @@ func newTracker(active Active, inactive Inactive, scanCompleted Action) *tracker
 		active:        active,
 		inactive:      inactive,
 		scanCompleted: scanCompleted,
-		lastCount:     0,
 		locker:        &sync.Mutex{},
 		processor:     newProcessCleaner(),
 		comparer:      newFileComparer(),
@@ -110,6 +109,9 @@ func (t *tracker) Stop() {
 }
 
 func (t *tracker) scanFiles() {
+	t.locker.Lock()
+	defer t.locker.Unlock()
+
 	log.Printf("Scanner ran at: %s", time.Now())
 	modified := false
 
@@ -120,7 +122,6 @@ func (t *tracker) scanFiles() {
 		}
 	}
 
-	t.lastCount = len(t.filesMoved) + len(t.filesDeleted)
 	t.toggleActive()
 
 	for _, moved := range t.filesMoved {
@@ -320,15 +321,18 @@ func (t *tracker) innerDiscard(move *trackedMove) {
 	safeDeleteDirectory(dir)
 }
 
-func (t *tracker) discard() {
+func (t *tracker) discardAll() {
 	t.locker.Lock()
 	defer t.locker.Unlock()
 
 	log.Printf("Discarding all files")
 
-	for _, deleted := range t.filesDeleted {
-		delete(t.filesDeleted, deleted.File)
+	for _, moved := range t.filesMoved {
+		t.killProcess(moved)
 	}
+
+	t.filesMoved = make(map[string]*trackedMove)
+	t.filesDeleted = make(map[string]*trackedDelete)
 }
 
 func (t *tracker) getCount() int {

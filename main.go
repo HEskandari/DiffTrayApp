@@ -4,32 +4,22 @@ import (
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/cmd/fyne_demo/tutorials"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/VerifyTests/Verify.Go/utils"
 	"log"
-	"slices"
 )
 
 var application fyne.App
 var mainWindow fyne.Window
+var optionsWindow fyne.Window
 var deskApp desktop.App
 var serv *server
 var track *tracker
 
-var MainMenu *fyne.Menu
-var MenuOptions *fyne.MenuItem
-var MenuLogs *fyne.MenuItem
-var MenuIssues *fyne.MenuItem
-var MenuQuitApp *fyne.MenuItem
-var StartSeparator = fyne.NewMenuItemSeparator()
-var EndSeparator = fyne.NewMenuItemSeparator()
-
-var CurrentAppIcon *theme.ThemedResource
+var CurrentAppIcon *fyne.StaticResource
 
 type Action = func()
 
@@ -39,26 +29,6 @@ func init() {
 	initLogger()
 
 	initMenu()
-}
-
-func debugMenu() {
-	for i, item := range MainMenu.Items {
-		println(i, item.Label)
-	}
-}
-
-func initMenu() {
-	MenuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
-	MenuOptions.Icon = resourceCogsPng
-
-	MenuLogs = fyne.NewMenuItem("Open logs", openLogDirectory)
-	MenuLogs.Icon = resourceFolderPng
-
-	MenuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
-	MenuIssues.Icon = resourceLinkPng
-
-	MenuQuitApp = fyne.NewMenuItem("Quit", nil)
-	MenuQuitApp.IsQuit = true
 }
 
 func main() {
@@ -77,53 +47,12 @@ func main() {
 	registerAndRun(application)
 }
 
-func createMainMenu() {
-	MainMenu = fyne.NewMenu("Main Menu", MenuOptions, MenuLogs, MenuIssues, EndSeparator, MenuQuitApp)
-}
-
 func startServer() {
 	track = newTracker(showActiveIcon, showInactiveIcon, updateMenuItems)
 	serv = newServer(track.addMove, track.addDelete, updateMenuItems)
 
 	serv.Start()
 	track.Start()
-}
-
-func updateMenuItems() {
-	log.Printf("Updating menu")
-
-	clearFileMenus()
-
-	if track.trackingAny() {
-		addStartSeparator()
-
-		addDiscardAllMenuItem()
-		addAcceptAllMenuItem()
-
-		addStartSeparator()
-
-		//Add delete items
-		for d := range track.filesDeleted {
-			td := track.filesDeleted[d]
-			addDeleteMenuItem(td, func() {
-				acceptDelete(td)
-			})
-		}
-
-		//Add moved items
-		for m := range track.filesMoved {
-			tm := track.filesMoved[m]
-			addMovedMenuItem(tm, func() {
-				acceptMove(tm)
-			}, func() {
-				discardMove(tm)
-			})
-		}
-
-		addEndSeparator()
-	}
-
-	MainMenu.Refresh()
 }
 
 func discardMove(tm *trackedMove) {
@@ -141,55 +70,22 @@ func acceptDelete(td *trackedDelete) {
 	updateMenuItems()
 }
 
-func clearFileMenus() {
-
-	if len(MainMenu.Items) == 5 {
-		return
-	}
-
-	quitOption := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item.IsQuit
-	})
-
-	menuIssuesIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item == MenuIssues
-	})
-
-	if quitOption == -1 {
-		return
-	}
-
-	MainMenu.Items = append(MainMenu.Items[:menuIssuesIndex+1], MainMenu.Items[quitOption-2:]...)
-}
-
 func addAcceptAllMenuItem() {
-	menu := fyne.NewMenuItem(fmt.Sprintf("Accept all (%d)", track.getCount()), track.acceptAll)
+	menu := fyne.NewMenuItem(fmt.Sprintf("Accept all (%d)", track.getCount()), func() {
+		track.acceptAll()
+		updateMenuItems()
+	})
 	menu.Icon = resourceDiscardPng
 	insertMenu(menu)
 }
 
 func addDiscardAllMenuItem() {
-	menu := fyne.NewMenuItem(fmt.Sprintf("Discard (%d)", track.getCount()), track.discard)
+	menu := fyne.NewMenuItem(fmt.Sprintf("Discard all (%d)", track.getCount()), func() {
+		track.discardAll()
+		updateMenuItems()
+	})
 	menu.Icon = resourceDiscardPng
 	insertMenu(menu)
-}
-
-func addMovedMenuItem(move *trackedMove, accept Action, discard Action) {
-	tempName := utils.File.GetFileNameWithoutExtension(move.Temp)
-	targetName := utils.File.GetFileNameWithoutExtension(move.Target)
-	text := getMoveText(move, tempName, targetName)
-
-	menu := fyne.NewMenuItem(text, NoAction)
-	insertMenu(menu)
-
-	menu.ChildMenu = fyne.NewMenu("",
-		fyne.NewMenuItem("Accept move", accept),
-		fyne.NewMenuItem("Discard", discard))
-
-	if len(move.Exe) > 0 {
-		menu.ChildMenu.Items = append(menu.ChildMenu.Items,
-			fyne.NewMenuItem("Open diff tool", launchDiffTool))
-	}
 }
 
 func getMoveText(move *trackedMove, temp string, target string) string {
@@ -205,38 +101,6 @@ func addDeleteMenuItem(move *trackedDelete, action Action) {
 	insertMenu(menu)
 }
 
-func addStartSeparator() {
-	insertMenu(StartSeparator)
-}
-
-func addEndSeparator() {
-	endIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item == EndSeparator
-	})
-
-	if endIndex == -1 {
-		insertMenu(EndSeparator)
-	}
-}
-
-func insertMenu(menuItem *fyne.MenuItem) {
-	//endIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
-	//	return item.IsQuit
-	//})
-
-	menuIssuesIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
-		return item == MenuIssues
-	})
-
-	//if len(MainMenu.Items) == index { // nil or empty slice or after last element
-	//	return append(MainMenu.Items, menuItem)
-	//}
-	MainMenu.Items = slices.Insert(MainMenu.Items, menuIssuesIndex+1, menuItem)
-	//MainMenu.Items = append(MainMenu.Items[:menuIssuesIndex+1], menuItem, MainMenu.Items[menuIssuesIndex+2:]...)
-	//MainMenu.Items[index] = menuItem
-	//return MainMenu.Items
-}
-
 //func insertMenu(index int, menuItem *fyne.MenuItem) []*fyne.MenuItem {
 //	if len(MainMenu.Items) == index { // nil or empty slice or after last element
 //		return append(MainMenu.Items, menuItem)
@@ -249,7 +113,7 @@ func insertMenu(menuItem *fyne.MenuItem) {
 func showInactiveIcon() {
 	//if CurrentAppIcon.Name() !=  {
 	log.Println("Show inactive icon")
-	CurrentAppIcon = theme.NewThemedResource(theme.GridIcon())
+	CurrentAppIcon = resourceDefaultPng
 	deskApp.SetSystemTrayIcon(CurrentAppIcon)
 	//}
 }
@@ -258,7 +122,7 @@ func showActiveIcon() {
 	//log.Printf("Current icon name: %s", CurrentAppIconName)
 	//if CurrentAppIconName != "Active" {
 	log.Println("Show active icon")
-	CurrentAppIcon = theme.NewWarningThemedResource(theme.GridIcon())
+	CurrentAppIcon = resourceDefaultPng
 	deskApp.SetSystemTrayIcon(CurrentAppIcon)
 	//}
 }
@@ -286,62 +150,8 @@ func appStopped() {
 	closeLogFile()
 }
 
-func makeNav(setTutorial func(tutorial tutorials.Tutorial), loadPrevious bool) fyne.CanvasObject {
-	a := fyne.CurrentApp()
-	tree := &widget.Tree{
-		ChildUIDs: func(uid string) []string {
-			return tutorials.TutorialIndex[uid]
-		},
-		IsBranch: func(uid string) bool {
-			children, ok := tutorials.TutorialIndex[uid]
-			return ok && len(children) > 0
-		},
-		CreateNode: func(branch bool) fyne.CanvasObject {
-			return widget.NewLabel("Collection Widgets")
-		},
-		UpdateNode: func(uid string, branch bool, obj fyne.CanvasObject) {
-			t, ok := tutorials.Tutorials[uid]
-			if !ok {
-				fyne.LogError("Missing tutorial panel: "+uid, nil)
-				return
-			}
-			obj.(*widget.Label).SetText(t.Title)
-			obj.(*widget.Label).TextStyle = fyne.TextStyle{}
-		},
-		OnSelected: func(uid string) {
-			if _, ok := tutorials.Tutorials[uid]; ok {
-				return
-				//if unsupportedTutorial(t) {
-				//	return
-				//}
-				//a.Preferences().SetString(preferenceCurrentTutorial, uid)
-				//setTutorial(t)
-			}
-		},
-	}
-	if loadPrevious {
-		//currentPref := a.Preferences().StringWithFallback(preferenceCurrentTutorial, "welcome")
-		//tree.Select(currentPref)
-	}
-	themes := container.NewGridWithColumns(2,
-		widget.NewButton("Dark", func() {
-			a.Settings().SetTheme(theme.DarkTheme())
-		}),
-		widget.NewButton("Light", func() {
-			a.Settings().SetTheme(theme.LightTheme())
-		}),
-	)
-	return container.NewBorder(nil, themes, nil, nil, tree)
-}
-
-func shortcutFocused(s fyne.Shortcut, w fyne.Window) {
-	if focused, ok := w.Canvas().Focused().(fyne.Shortcutable); ok {
-		focused.TypedShortcut(s)
-	}
-}
-
 func createTrayIcon() {
-	CurrentAppIcon = theme.NewThemedResource(theme.GridIcon()) //resourceDefaultSvg)
+	CurrentAppIcon = resourceDefaultPng
 	deskApp = fyne.CurrentApp().(desktop.App)
 	deskApp.SetSystemTrayMenu(MainMenu)
 	deskApp.SetSystemTrayIcon(CurrentAppIcon)
@@ -353,34 +163,18 @@ func onRaiseIssue() {
 func onOptionsClicked() {
 	log.Printf("Options menu clicked")
 
-	dialogWindow := application.NewWindow("Dialog resize")
-	dialogWindow.Resize(fyne.NewSize(300, 300))
-	dialogWindow.CenterOnScreen()
+	if optionsWindow == nil {
+		optionsWindow = fyne.CurrentApp().NewWindow("Options")
+		label1 := widget.NewLabel("Version: ")
+		value1 := widget.NewLabel("v1.0.0")
+		grid := container.New(layout.NewFormLayout(), label1, value1)
 
-	label1 := widget.NewLabel("Version: ")
-	value1 := widget.NewLabel("v1.0.0")
+		optionsWindow.SetContent(grid)
+		optionsWindow.Resize(fyne.NewSize(480, 480))
+		optionsWindow.SetCloseIntercept(func() {
+			optionsWindow.Hide()
+		})
+	}
 
-	grid := container.New(layout.NewFormLayout(), label1, value1)
-
-	dialogWindow.SetContent(grid)
-
-	dialogWindow.Show()
-	dialogWindow.RequestFocus()
-
-	//runPopUp(dialogWindow)
-}
-
-var modal *widget.PopUp
-
-func runPopUp(w fyne.Window) *widget.PopUp {
-	modal := widget.NewModalPopUp(
-		container.NewVBox(
-			widget.NewLabel("bar"),
-			widget.NewButton("Close", func() { modal.Hide() }),
-		),
-		w.Canvas(),
-	)
-	modal.Move(fyne.NewPos(100, 100))
-	modal.Show()
-	return modal
+	optionsWindow.Show()
 }
