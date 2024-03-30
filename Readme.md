@@ -9,6 +9,14 @@ go install fyne.io/fyne/v2/cmd/fyne@latest
 fyne bundle -o images.go ./images
 ```
 
+### Packaging
+
+To package for MacOs:
+
+```cmd
+fyne package -os darwin -icon icon.png
+```
+
 Images courtesy of Flaticon:
 
 - Dwi Ridwanto
