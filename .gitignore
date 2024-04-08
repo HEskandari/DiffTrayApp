@@ -1,0 +1,8 @@
+[Bb]in
+*.received.*
+.idea
+.DS_Store
+dist/
+Logs/*
+_testdata/*_IgnoreVerify.verified.txt
+*.app/

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -11,7 +10,7 @@ import (
 	"strings"
 )
 
-var TrackerPort = 4523
+var TrackerPort = 3492
 
 type MoveMessageHandler func(cmd *MovePayload)
 type DeleteMessageHandler func(cmd *DeletePayload)
@@ -20,43 +19,56 @@ type server struct {
 	processor     chan string
 	moveHandler   MoveMessageHandler
 	deleteHandler DeleteMessageHandler
+	updateHandler Action
 }
 
-func (t *server) Start() {
-	go t.startReceiver()
-	go t.startProcessor(t.processor)
-}
-
-func (t *server) Stop() {
-	close(t.processor)
-}
-
-func (t *server) startProcessor(input <-chan string) {
-	for {
-		message := <-input
-
-		if strings.Contains(message, "\"Type\":\"Move\"") {
-			moveCommand := MovePayload{}
-			deserialize(message, &moveCommand)
-			t.moveFile(&moveCommand)
-		} else if strings.Contains(message, "\"Type\":\"Delete\"") {
-			deleteCommand := DeletePayload{}
-			deserialize(message, &deleteCommand)
-			t.deleteFile(&deleteCommand)
-		} else {
-			log.Printf("Unknown payload: %s", message)
-		}
-	}
-}
-
-func newServer() *server {
+func newServer(moveHandler MoveMessageHandler, deleteHandler DeleteMessageHandler, action Action) *server {
 	srv := &server{
-		processor: make(chan string, 1),
+		processor:     make(chan string, 1),
+		moveHandler:   moveHandler,
+		deleteHandler: deleteHandler,
+		updateHandler: action,
 	}
 	return srv
 }
 
-func (t *server) startReceiver() {
+func (s *server) Start() {
+	go s.startReceiver()
+	go s.startProcessor()
+}
+
+func (s *server) Stop() {
+	close(s.processor)
+}
+
+func (s *server) startProcessor() {
+	for {
+		message := <-s.processor
+		shouldUpdate := false
+
+		if strings.Contains(message, "\"Type\":\"Move\"") {
+			log.Printf("Move message received: %s", message)
+			moveCommand := MovePayload{}
+			deserialize(message, &moveCommand)
+			s.moveFile(&moveCommand)
+			shouldUpdate = true
+		} else if strings.Contains(message, "\"Type\":\"Delete\"") {
+			log.Printf("Delete message received: %s", message)
+			deleteCommand := DeletePayload{}
+			deserialize(message, &deleteCommand)
+			s.deleteFile(&deleteCommand)
+			shouldUpdate = true
+		} else if len(message) > 0 {
+			log.Printf("Unknown message, ignoring: %s", message)
+		}
+
+		if shouldUpdate {
+			s.filesUpdated()
+		}
+	}
+}
+
+func (s *server) startReceiver() {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(TrackerPort))
 	check(err, "Server is ready.")
 
@@ -72,7 +84,12 @@ func (t *server) startReceiver() {
 			}
 			message := string(bytes)
 
-			t.processor <- message
+			if len(message) > 0 {
+				log.Printf("Sending message to processor: %s", message)
+				s.processor <- message
+			} else {
+				log.Printf("Received empty message. Dropping")
+			}
 		}(conn)
 	}
 }
@@ -81,23 +98,29 @@ func check(err error, message string) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%s\n", message)
+	log.Printf("%s\n", message)
 }
 
-func (t *server) deleteFile(command *DeletePayload) {
-	log.Printf("Delete: %+v", command)
-	t.deleteHandler(command)
+func (s *server) deleteFile(command *DeletePayload) {
+	log.Printf("Deleting command received: %+v", command)
+	s.deleteHandler(command)
 }
 
-func (t *server) moveFile(command *MovePayload) {
-	log.Printf("Move: %+v", command)
-	t.moveHandler(command)
+func (s *server) moveFile(command *MovePayload) {
+	log.Printf("Moving command received: %+v", command)
+	s.moveHandler(command)
+}
+
+func (s *server) filesUpdated() {
+	if s.updateHandler != nil {
+		s.updateHandler()
+	}
 }
 
 func deserialize(payload string, obj interface{}) {
 	err := json.Unmarshal([]byte(payload), obj)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 

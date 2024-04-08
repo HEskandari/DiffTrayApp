@@ -1,86 +1,146 @@
 package main
 
 import (
-	"fmt"
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/cmd/fyne_settings/settings"
-	"fyne.io/fyne/v2/driver/desktop"
-	"net/url"
+	"github.com/VerifyTests/Verify.Go/utils"
+	"log"
+	"slices"
 )
 
-func makeMenu() *fyne.MainMenu {
-	newItem := fyne.NewMenuItem("New", nil)
-	checkedItem := fyne.NewMenuItem("Checked", nil)
-	checkedItem.Checked = true
-	disabledItem := fyne.NewMenuItem("Disabled", nil)
-	disabledItem.Disabled = true
-	otherItem := fyne.NewMenuItem("Other", nil)
-	otherItem.ChildMenu = fyne.NewMenu("",
-		fyne.NewMenuItem("Project", func() { fmt.Println("Menu New->Other->Project") }),
-		fyne.NewMenuItem("Mail", func() { fmt.Println("Menu New->Other->Mail") }),
-	)
-	newItem.ChildMenu = fyne.NewMenu("",
-		fyne.NewMenuItem("File", func() { fmt.Println("Menu New->File") }),
-		fyne.NewMenuItem("Directory", func() { fmt.Println("Menu New->Directory") }),
-		otherItem,
-	)
-	openSettings := func() {
-		w := fyne.CurrentApp().NewWindow("Fyne Settings")
-		w.SetContent(settings.NewSettings().LoadAppearanceScreen(w))
-		w.Resize(fyne.NewSize(480, 480))
-		w.Show()
-	}
-	settingsItem := fyne.NewMenuItem("Settings", openSettings)
-	settingsShortcut := &desktop.CustomShortcut{KeyName: fyne.KeyComma, Modifier: fyne.KeyModifierShortcutDefault}
-	settingsItem.Shortcut = settingsShortcut
+var MainMenu *fyne.Menu
+var MenuOptions *fyne.MenuItem
+var MenuLogs *fyne.MenuItem
+var MenuIssues *fyne.MenuItem
+var MenuQuitApp *fyne.MenuItem
 
-	mainWindow.Canvas().AddShortcut(settingsShortcut, func(shortcut fyne.Shortcut) {
-		openSettings()
-	})
-	cutShortcut := &fyne.ShortcutCut{Clipboard: mainWindow.Clipboard()}
-	cutItem := fyne.NewMenuItem("Cut", func() {
-		shortcutFocused(cutShortcut, mainWindow)
-	})
-	cutItem.Shortcut = cutShortcut
-	copyShortcut := &fyne.ShortcutCopy{Clipboard: mainWindow.Clipboard()}
-	copyItem := fyne.NewMenuItem("Copy", func() {
-		shortcutFocused(copyShortcut, mainWindow)
-	})
-	copyItem.Shortcut = copyShortcut
-	pasteShortcut := &fyne.ShortcutPaste{Clipboard: mainWindow.Clipboard()}
-	pasteItem := fyne.NewMenuItem("Paste", func() {
-		shortcutFocused(pasteShortcut, mainWindow)
-	})
-	pasteItem.Shortcut = pasteShortcut
-	performFind := func() { fmt.Println("Menu Find") }
-	findItem := fyne.NewMenuItem("Find", performFind)
-	findItem.Shortcut = &desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierShortcutDefault | fyne.KeyModifierAlt | fyne.KeyModifierShift | fyne.KeyModifierControl | fyne.KeyModifierSuper}
-	mainWindow.Canvas().AddShortcut(findItem.Shortcut, func(shortcut fyne.Shortcut) {
-		performFind()
-	})
-	helpMenu := fyne.NewMenu("Help",
-		fyne.NewMenuItem("Documentation", func() {
-			u, _ := url.Parse("https://developer.fyne.io")
-			_ = fyne.CurrentApp().OpenURL(u)
-		}),
-		fyne.NewMenuItem("Support", func() {
-			u, _ := url.Parse("https://fyne.io/support/")
-			_ = fyne.CurrentApp().OpenURL(u)
-		}),
-		fyne.NewMenuItemSeparator(),
-		fyne.NewMenuItem("Sponsor", func() {
-			u, _ := url.Parse("https://fyne.io/sponsor/")
-			_ = fyne.CurrentApp().OpenURL(u)
-		}))
-	// a quit item will be appended to our first (File) menu
-	file := fyne.NewMenu("File", newItem, checkedItem, disabledItem)
-	device := fyne.CurrentDevice()
-	if !device.IsMobile() && !device.IsBrowser() {
-		file.Items = append(file.Items, fyne.NewMenuItemSeparator(), settingsItem)
+//var StartSeparator =
+//var EndSeparator = fyne.NewMenuItemSeparator()
+
+func initMenu() {
+	MenuOptions = fyne.NewMenuItem("Options", onOptionsClicked)
+	MenuOptions.Icon = resourceCogsPng
+
+	MenuLogs = fyne.NewMenuItem("Open logs", openLogDirectory)
+	MenuLogs.Icon = resourceFolderPng
+
+	MenuIssues = fyne.NewMenuItem("Raise issue", onRaiseIssue)
+	MenuIssues.Icon = resourceLinkPng
+
+	MenuQuitApp = fyne.NewMenuItem("Quit", nil)
+	MenuQuitApp.IsQuit = true
+}
+
+func createMainMenu() {
+	MainMenu = fyne.NewMenu("Main Menu", MenuOptions, MenuLogs, MenuIssues, fyne.NewMenuItemSeparator(), MenuQuitApp)
+}
+
+func updateMenuItems() {
+	log.Printf("Updating menu")
+
+	clearFileMenus()
+
+	if track.trackingAny() {
+		insertSeparator()
+
+		addDiscardAllMenuItem()
+		addAcceptAllMenuItem()
+
+		insertSeparator()
+
+		//Add delete items
+		for d := range track.filesDeleted {
+			td := track.filesDeleted[d]
+			addDeleteMenuItem(td, func() {
+				acceptDelete(td)
+			})
+		}
+
+		//Add moved items
+		for m := range track.filesMoved {
+			tm := track.filesMoved[m]
+			addMovedMenuItem(tm, func() {
+				acceptMove(tm)
+			}, func() {
+				discardMove(tm)
+			})
+		}
+
+		insertSeparator()
 	}
-	return fyne.NewMainMenu(
-		file,
-		fyne.NewMenu("Edit", cutItem, copyItem, pasteItem, fyne.NewMenuItemSeparator(), findItem),
-		helpMenu,
-	)
+
+	MainMenu.Refresh()
+}
+
+func clearFileMenus() {
+
+	if len(MainMenu.Items) == 5 {
+		return
+	}
+
+	quitOption := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item.IsQuit
+	})
+
+	menuIssuesIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == MenuIssues
+	})
+
+	if quitOption == -1 {
+		return
+	}
+	if menuIssuesIndex == -1 {
+		return
+	}
+
+	MainMenu.Items = append(MainMenu.Items[:menuIssuesIndex+1], MainMenu.Items[quitOption-2:]...)
+}
+
+func addMovedMenuItem(move *trackedMove, accept Action, discard Action) {
+	tempName := utils.File.GetFileNameWithoutExtension(move.Temp)
+	targetName := utils.File.GetFileNameWithoutExtension(move.Target)
+	text := getMoveText(move, tempName, targetName)
+
+	menu := fyne.NewMenuItem(text, NoAction)
+	insertMenu(menu)
+
+	menu.ChildMenu = fyne.NewMenu("",
+		fyne.NewMenuItem("Accept move", accept),
+		fyne.NewMenuItem("Discard", discard))
+
+	if len(move.Exe) > 0 {
+		menu.ChildMenu.Items = append(menu.ChildMenu.Items,
+			fyne.NewMenuItem("Open diff tool", launchDiffTool))
+	}
+}
+
+func insertSeparator() {
+	insertMenu(fyne.NewMenuItemSeparator())
+}
+
+//func addEndSeparator() {
+//	endIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+//		return item == EndSeparator
+//	})
+//
+//	if endIndex == -1 {
+//		insertMenu(EndSeparator)
+//	}
+//}
+
+func insertMenu(menuItem *fyne.MenuItem) {
+	//endIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+	//	return item.IsQuit
+	//})
+
+	menuIssuesIndex := findIndex(MainMenu.Items, func(item *fyne.MenuItem) bool {
+		return item == MenuIssues
+	})
+
+	//if len(MainMenu.Items) == index { // nil or empty slice or after last element
+	//	return append(MainMenu.Items, menuItem)
+	//}
+	MainMenu.Items = slices.Insert(MainMenu.Items, menuIssuesIndex+1, menuItem)
+	//MainMenu.Items = append(MainMenu.Items[:menuIssuesIndex+1], menuItem, MainMenu.Items[menuIssuesIndex+2:]...)
+	//MainMenu.Items[index] = menuItem
+	//return MainMenu.Items
 }

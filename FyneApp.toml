@@ -1,0 +1,8 @@
+Website = "https://seesharpsoftware.com.au"
+
+[Details]
+  Icon = "Icon.png"
+  Name = "Diff Tray App"
+  ID = "au.com.seesharpsoftware.difftray"
+  Version = "1.0.0"
+  Build = 11
