@@ -1,6 +1,6 @@
 ### Generating image bundles
 
-- First install the fynd command tools:
+- First install the fyne command tools:
 ```cmd
 go install fyne.io/fyne/v2/cmd/fyne@latest
 ```
@@ -14,7 +14,7 @@ fyne bundle -o images.go ./images
 To package for MacOs:
 
 ```cmd
-fyne package -os darwin -icon icon.png
+make create-package-macos
 ```
 
 Images courtesy of Flaticon:

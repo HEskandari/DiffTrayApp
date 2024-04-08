@@ -5,3 +5,4 @@
 dist/
 Logs/*
 _testdata/*_IgnoreVerify.verified.txt
+*.app/
